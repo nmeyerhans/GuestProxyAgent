@@ -1,12 +1,52 @@
-
-Package: azure-proxy-agent
-Architecture: amd64
-Version: pkgversion
+Source: azure-guest-proxy-agent
 Maintainer: AzureRT ProxyAgent V Team <ARTProxyAgentVTeam@microsoft.com>
+Uploaders: Noah Meyerhans <noahm@debian.org>
 Homepage: https://github.com/Azure/GuestProxyAgent
+Section: admin
+Priority: optional
+Standards-Version: 4.6.2
+Build-Depends:
+ debhelper-compat (= 12),
+ clang,
+ libbpf-dev,
+ libbpfcc-dev,
+ llvm,
+ musl-tools,
+ librust-hex-dev,
+ librust-hmac-dev,
+ librust-version-check-dev,
+ librust-regex-dev,
+ librust-hmac-sha256-dev,
+ librust-itertools-dev,
+ librust-libloading-dev,
+ librust-serde-xml-rs-dev (>= 0.6.0),
+ librust-url-dev,
+ librust-uuid-dev,
+ librust-aya-dev,
+ librust-hashbrown-dev,
+ librust-thread-priority-dev,
+ librust-sysinfo-dev,
+ librust-users-dev,
+ librust-concurrent-queue-dev,
+ librust-thread-id-dev,
+ librust-time-dev,
+ librust-os-info-dev,
+ librust-nix-dev,
+ rustc
+
+Package: azure-guest-proxy-agent
+Architecture: amd64 arm64
+Depends: ${shlibs:Depends}
 Suggests: btrfs-progs, xfsprogs, grub2, udev, e2fsprogs, systemd
-Description: Azure Guest Proxy Agent
-  The Azure Guest Proxy Agent is a daemon that runs on the Azure guest
-  operating system and provides a proxy for the Azure Fabric Controller
-  to communicate with the guest operating system.
-  This package contains the proxy agent.
+Description: Access control for Micosoft Azure link-local network services
+ The Azure guest proxy agent introduces features to control access to
+ potentially sensitive link-local HTTP endpoints within the Microsoft Azure
+ cloud environment.  (WireServer IP Endpoint [168.63.129.16] and Instance
+ Metadata Service IP Endpoint [169.254.169.254]).  It introduces a new
+ component (GuestProxyAgent) which leverages eBPF to intercept the http
+ query, and control the access at two levels:
+ .
+  * Default root only authorization for the WireServer endpoints
+    168.63.129.16
+  * Policy-based authorization where only approved communication is
+    allowed via the GuestProxyAgent based on user ID, process name, etc

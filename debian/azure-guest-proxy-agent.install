@@ -1,0 +1,2 @@
+proxy_agent/target/release/GuestProxyAgent usr/sbin
+linux-ebpf/ebpf_cgroup.o usr/lib/azure-guest-proxy-agent
