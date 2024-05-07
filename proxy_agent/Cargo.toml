@@ -50,31 +50,6 @@ features = [
   "user"
 ]
 
-[target.'cfg(windows)'.dependencies]
-windows-service = "0.7.0"     # windows NT service
-windows-acl = "0.3.0"         # ACL the latch key folder
-winapi = "0.3.9"              # used by windows-acl PSID
-libloading = "0.8.0"          # for dynamic load libraries
-
-[target.'cfg(windows)'.build-dependencies]
-winres = "0.1.12"             # Rust Windows resource helper to add file version
-static_vcruntime = "2.0.0"    # Statically link the VCRuntime when using the MSVC toolchain
-
-[target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.42.0"
-features = [
-  "Win32_Foundation",
-  "Win32_Networking_WinSock",
-  "Win32_System_IO",
-  "Win32_Security",
-  "Win32_System_WindowsProgramming",
-  "Win32_Security_Authentication_Identity", 
-  "Win32_System_Diagnostics_Debug",
-  "Win32_System_SystemInformation",
-  "Win32_System_Threading",
-  "Win32_System_ProcessStatus",
-  "Win32_System_Kernel",
-]
 
 [features]
 test-with-root = []
