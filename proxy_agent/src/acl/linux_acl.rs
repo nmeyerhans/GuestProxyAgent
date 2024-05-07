@@ -9,18 +9,7 @@ pub fn acl_directory(dir_to_acl: PathBuf) -> std::io::Result<()> {
         dir_str.to_string()
     ));
 
-    let output =
-        misc_helpers::execute_command("chown", vec!["-R", "root:root", &dir_str], -1);
-    logger::write(format!(
-        "acl_directory: set folder {} to owner root, result: '{}'-'{}'-'{}'.",
-        dir_str.to_string(),
-        output.0,
-        output.1,
-        output.2
-    ));
-
-    let output =
-        misc_helpers::execute_command("chmod", vec!["-cR", "700", &dir_str], -1);
+    let output = misc_helpers::execute_command("chmod", vec!["-cR", "700", &dir_str], -1);
     logger::write(format!(
         "acl_directory: set root access only permission to folder {} result: '{}'-'{}'-'{}'.",
         dir_str.to_string(),
@@ -58,10 +47,7 @@ mod tests {
         let out_put =
             misc_helpers::execute_command("ls", vec!["-ld", &temp_test_path.to_str().unwrap()], -1);
         assert_eq!(0, out_put.0, "exit code mismatch");
-        assert!(
-            out_put.1.contains("drwx------ 2 root root"),
-            "stdout message mismatch"
-        );
+        assert!(out_put.1.contains("drwx------ "), "stdout message mismatch");
 
         _ = fs::remove_dir_all(&temp_test_path);
     }
