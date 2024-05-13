@@ -19,7 +19,7 @@ Build-Depends:
  librust-hmac-sha256-dev,
  librust-itertools-dev,
  librust-libloading-dev,
- librust-serde-xml-rs-dev (>= 0.6.0),
+ librust-serde-xml-rs-dev,
  librust-url-dev,
  librust-uuid-dev,
  librust-aya-dev,
