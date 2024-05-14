@@ -34,9 +34,13 @@ execute_before_dh_auto_configure:
 #override_dh_auto_install:
 #	cargo install --offline proxy_agent
 
+execute_after_dh_auto_install: INSTALLROOT=debian/azure-guest-proxy-agent
 execute_after_dh_auto_install:
+	install -o root -g root -m0755	proxy_agent/target/release/GuestProxyAgent \
+	  $(INSTALLROOT)/usr/sbin/azure-proxy-agent
 	install -o root -g root -m0644 proxy_agent/config/GuestProxyAgent.linux.json \
-	  debian/azure-guest-proxy-agent/etc/GuestProxyAgent.json
+	  $(INSTALLROOT)/etc/azure-guest-proxy-agent.json
+	install -o root -g root -m0644 linux-ebpf/ebpf_cgroup.o $(INSTALLROOT)/usr/lib/azure-guest-proxy-agent
 	cp proxy_agent_setup/src/linux/GuestProxyAgent.service debian/azure-guest-proxy-agent.service
 	dh_installsystemd
 
