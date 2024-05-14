@@ -7,6 +7,8 @@ Wants=network-pre.target
 
 [Service]
 Type=simple
+Environment=AZURE_PROXY_AGENT_ENV_CONFIG_FULL_PATH=/etc/azure-guest-proxy-agent.json
+Environment=AZURE_PROXY_AGENT_ENV_EBPF_FULL_PATH=/usr/lib/azure-guest-proxy-agent/ebpf_cgroup.o
 ExecStart=/usr/sbin/azure-proxy-agent
 Restart=always
 RestartSec=5
