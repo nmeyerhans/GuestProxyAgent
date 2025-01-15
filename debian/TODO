@@ -1,0 +1,8 @@
+## Dependencies needing packaging
+
+* aya
+* aya-obj
+
+### pending NEW processing
+
+* thread-priority
