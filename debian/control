@@ -26,7 +26,6 @@ Build-Depends:
  librust-hashbrown-dev,
  librust-thread-priority-dev,
  librust-sysinfo-dev,
- librust-users-dev,
  librust-concurrent-queue-dev,
  librust-thread-id-dev,
  librust-time-dev,
