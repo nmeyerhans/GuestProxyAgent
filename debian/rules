@@ -6,7 +6,7 @@ include /usr/share/dpkg/architecture.mk
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 ebpf_path:=linux-ebpf
 CARGO_OPTS+=--verbose --manifest-path proxy_agent/Cargo.toml
-BUILD_TYPE?=debug
+BUILD_TYPE?=release
 
 %:
 	dh $@
