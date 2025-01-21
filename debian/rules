@@ -45,13 +45,12 @@ execute_after_dh_auto_clean:
 	rm -rf $(CARGO_HOME) debian/azure-guest-proxy-agent.service linux-ebpf/ebpf_cgroup.o
 	rm -rf $(CARGO_REGISTRY)
 
-override_dh_auto_test: out_dir=$(CURDIR)/proxy_agent/target/$(BUILD_TYPE)/deps
+override_dh_auto_test: out_dir=$(CURDIR)/target/$(BUILD_TYPE)/deps
 override_dh_auto_test:
 ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	mkdir -p $(out_dir)
-	cp -f -T proxy_agent/config/GuestProxyAgent.linux.json $(out_dir)/GuestProxyAgent.json
-	cargo test --verbose --release --manifest-path proxy_agent/Cargo.toml -- --test-threads=1 \
-	  --skip service::tests::test_check_service_installed --skip service::tests::test_install_service
+	cp -f -T proxy_agent/config/GuestProxyAgent.linux.json $(out_dir)/proxy-agent.json
+	cargo test --verbose --release --manifest-path proxy_agent/Cargo.toml -- --test-threads=1
 endif
 
 execute_after_dh_auto_install: TARGET=debian/azure-guest-proxy-agent
