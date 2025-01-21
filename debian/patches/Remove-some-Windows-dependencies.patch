@@ -1,0 +1,77 @@
+From 0e5732501a1e6f5053280ed062a04135a42defef Mon Sep 17 00:00:00 2001
+From: Noah Meyerhans <frodo@morgul.net>
+Date: Tue, 7 May 2024 09:14:09 -0700
+Subject: [PATCH 1/5] Remove some Windows dependencies
+
+---
+ proxy_agent/Cargo.toml        | 25 -------------------------
+ proxy_agent_shared/Cargo.toml | 17 -----------------
+ 2 files changed, 42 deletions(-)
+
+Index: GuestProxyAgent/proxy_agent/Cargo.toml
+===================================================================
+--- GuestProxyAgent.orig/proxy_agent/Cargo.toml
++++ GuestProxyAgent/proxy_agent/Cargo.toml
+@@ -50,34 +50,6 @@ features = [
+   "user"
+ ]
+ 
+-[target.'cfg(windows)'.dependencies]
+-windows-service = "0.7.0"     # windows NT service
+-windows-acl = "0.3.0"         # ACL the latch key folder
+-winapi = "0.3.9"              # used by windows-acl PSID
+-libloading = "0.8.0"          # for dynamic load libraries
+-
+-[target.'cfg(windows)'.build-dependencies]
+-winres = "0.1.12"             # Rust Windows resource helper to add file version
+-static_vcruntime = "2.0.0"    # Statically link the VCRuntime when using the MSVC toolchain
+-
+-[target.'cfg(windows)'.dependencies.windows-sys]
+-version = "0.42.0"
+-features = [
+-  "Win32_Foundation",
+-  "Win32_Networking_WinSock",
+-  "Win32_System_IO",
+-  "Win32_Security",
+-  "Win32_System_WindowsProgramming",
+-  "Win32_Security_Authentication_Identity", 
+-  "Win32_System_Diagnostics_Debug",
+-  "Win32_System_SystemInformation",
+-  "Win32_System_Threading",
+-  "Win32_System_ProcessStatus",
+-  "Win32_System_Kernel",
+-  "Win32_Security_Cryptography",
+-  "Win32_System_Memory",
+-]
+-
+ [features]
+ test-with-root = []
+ 
+Index: GuestProxyAgent/proxy_agent_shared/Cargo.toml
+===================================================================
+--- GuestProxyAgent.orig/proxy_agent_shared/Cargo.toml
++++ GuestProxyAgent/proxy_agent_shared/Cargo.toml
+@@ -17,22 +17,5 @@ regex = "1.9.5"               # match fi
+ thiserror = "1.0.64"
+ tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
+ 
+-[target.'cfg(windows)'.dependencies]
+-windows-service = "0.7.0"     # windows NT service
+-winreg = "0.11.0"             # windows reg read/write
+-
+-[target.'cfg(windows)'.dependencies.windows-sys]
+-version = "0.42.0"
+-features = [
+-  "Win32_Foundation",
+-  "Win32_Networking_WinSock",
+-  "Win32_System_IO",
+-  "Win32_Security",
+-  "Win32_System_WindowsProgramming",
+-  "Win32_Security_Authentication_Identity", 
+-  "Win32_System_Diagnostics_Debug",
+-  "Win32_System_SystemInformation",
+-]
+-
+ [target.'cfg(not(windows))'.dependencies]
+ os_info = "3.7.0"   # read Linux OS version and arch
+\ No newline at end of file
