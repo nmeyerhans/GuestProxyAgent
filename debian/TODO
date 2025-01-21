@@ -2,6 +2,20 @@
 
 * aya
 * aya-obj
+* http-body
+* http-body-util
+
+## Dependencies from experimental
+
+* hyper
+* hyper-util
+
+## Dependencies need updating
+
+* tower-http (0.4.4 -> 0.5.2)
+  -> brotli (6 -> 7)
+  -> tower-layer (0.3.2 -> 0.3.3)
+  -> async-compression
 
 ### pending NEW processing
 
