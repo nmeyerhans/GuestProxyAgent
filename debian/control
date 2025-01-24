@@ -37,6 +37,7 @@ Build-Depends:
  librust-hyper-dev <!upstream-cargo>,
  librust-hyper-util-dev <!upstream-cargo>,
  librust-tower-http-dev <!upstream-cargo>,
+ librust-thiserror-dev <!upstream-cargo>,
  rustc
 
 Package: azure-guest-proxy-agent
