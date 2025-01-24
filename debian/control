@@ -35,6 +35,7 @@ Build-Depends:
  librust-http-dev <!upstream-cargo>,
  librust-http-body-util-dev <!upstream-cargo>,
  librust-hyper-dev <!upstream-cargo>,
+ librust-hyper-util-dev <!upstream-cargo>,
  librust-tower-http-dev <!upstream-cargo>,
  rustc
 
