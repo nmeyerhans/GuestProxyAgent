@@ -1,0 +1,26 @@
+From: Noah Meyerhans <frodo@morgul.net>
+Date: Fri, 24 Jan 2025 18:16:38 -0500
+Subject: Update uuid build-dep and drop macro-diagnostics feature requirement
+
+macro-diagnostics is not currently available in Debian
+---
+ proxy_agent/Cargo.toml | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/proxy_agent/Cargo.toml b/proxy_agent/Cargo.toml
+index 8012a5d..68c734c 100644
+--- a/proxy_agent/Cargo.toml
++++ b/proxy_agent/Cargo.toml
+@@ -29,11 +29,10 @@ clap = { version = "4.5.17", features =["derive"] } # Command Line Argument Pars
+ thiserror = "2.0"
+ 
+ [dependencies.uuid]
+-version = "1.3.0"
++version = "1.10.0"
+ features = [
+     "v4",                # Lets you generate random UUIDs
+     "fast-rng",          # Use a faster (but still sufficiently random) RNG
+-    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+ ]
+ 
+ [target.'cfg(not(windows))'.dependencies]
