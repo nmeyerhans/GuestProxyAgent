@@ -1,0 +1,21 @@
+From: Noah Meyerhans <frodo@morgul.net>
+Date: Fri, 24 Jan 2025 18:12:26 -0500
+Subject: don't build setup or extension components
+
+---
+ Cargo.toml | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/Cargo.toml b/Cargo.toml
+index 5086c63..3b4a7cc 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -4,8 +4,6 @@ resolver = "2"
+ 
+ members = [
+     "proxy_agent",
+-    "proxy_agent_extension",
+-    "proxy_agent_setup",
+     "proxy_agent_shared",
+ ]
+ 
