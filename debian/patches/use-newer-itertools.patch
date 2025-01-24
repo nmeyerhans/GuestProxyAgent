@@ -1,4 +1,3 @@
-From e31e66f312df8de7719e84774adff471a1442d32 Mon Sep 17 00:00:00 2001
 From: Noah Meyerhans <noahm@debian.org>
 Date: Wed, 15 Jan 2025 20:21:33 +0000
 Subject: [PATCH 4/5] use newer itertools
@@ -7,10 +6,10 @@ Subject: [PATCH 4/5] use newer itertools
  proxy_agent/Cargo.toml | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
-Index: GuestProxyAgent/proxy_agent/Cargo.toml
-===================================================================
---- GuestProxyAgent.orig/proxy_agent/Cargo.toml
-+++ GuestProxyAgent/proxy_agent/Cargo.toml
+diff --git a/proxy_agent/Cargo.toml b/proxy_agent/Cargo.toml
+index 3145a18..1315743 100644
+--- a/proxy_agent/Cargo.toml
++++ b/proxy_agent/Cargo.toml
 @@ -7,7 +7,7 @@ build = "build.rs"
  
  [dependencies]

@@ -1,17 +1,15 @@
-From 5a02a1b24ec00b168dacf76186bbd25aae5ee4fb Mon Sep 17 00:00:00 2001
 From: Noah Meyerhans <noahm@debian.org>
 Date: Wed, 15 Jan 2025 17:27:44 +0000
 Subject: [PATCH 2/5] Relax serde-xml-rs version requirement
 
 ---
- debian/control         | 1 -
  proxy_agent/Cargo.toml | 2 +-
- 2 files changed, 1 insertion(+), 2 deletions(-)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
-Index: GuestProxyAgent/proxy_agent/Cargo.toml
-===================================================================
---- GuestProxyAgent.orig/proxy_agent/Cargo.toml
-+++ GuestProxyAgent/proxy_agent/Cargo.toml
+diff --git a/proxy_agent/Cargo.toml b/proxy_agent/Cargo.toml
+index b38bc4a..3145a18 100644
+--- a/proxy_agent/Cargo.toml
++++ b/proxy_agent/Cargo.toml
 @@ -12,7 +12,7 @@ once_cell = "1.17.0"          # use Lazy
  serde = "1.0.152"
  serde_derive = "1.0.152"

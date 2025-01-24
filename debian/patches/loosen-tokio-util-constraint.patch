@@ -1,4 +1,3 @@
-From df0e9779cb33e7428e3651401825f16ea0972645 Mon Sep 17 00:00:00 2001
 From: Noah Meyerhans <noahm@debian.org>
 Date: Wed, 15 Jan 2025 20:23:12 +0000
 Subject: [PATCH 5/5] loosen tokio-util constraint
@@ -8,7 +7,7 @@ Subject: [PATCH 5/5] loosen tokio-util constraint
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/proxy_agent/Cargo.toml b/proxy_agent/Cargo.toml
-index f588d27..79c5e1a 100644
+index 1315743..a3461a0 100644
 --- a/proxy_agent/Cargo.toml
 +++ b/proxy_agent/Cargo.toml
 @@ -18,7 +18,7 @@ hmac-sha256 = "1.1.6"         # use HMAC using the SHA-256 hash function
@@ -20,6 +19,3 @@ index f588d27..79c5e1a 100644
  http = "1.1.0"
  http-body-util = "0.1"
  hyper = { version = "1", features = ["server", "http1", "client"] }
--- 
-2.34.1
-
