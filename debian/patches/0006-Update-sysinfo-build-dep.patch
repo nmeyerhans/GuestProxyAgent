@@ -1,0 +1,100 @@
+From: Noah Meyerhans <frodo@morgul.net>
+Date: Fri, 24 Jan 2025 17:51:37 -0500
+Subject: Update sysinfo dependency to 0.30
+
+refactor to support interface changes
+
+Signed-off-by: Noah Meyerhans <nmeyerhans@microsoft.com>
+---
+ proxy_agent/Cargo.toml            |  2 +-
+ proxy_agent/src/common/helpers.rs |  9 ++++++---
+ proxy_agent/src/proxy.rs          | 16 ++++++++++++----
+ proxy_agent_extension/Cargo.toml  |  2 +-
+ 4 files changed, 20 insertions(+), 9 deletions(-)
+
+diff --git a/proxy_agent/Cargo.toml b/proxy_agent/Cargo.toml
+index f4dee0e..8012a5d 100644
+--- a/proxy_agent/Cargo.toml
++++ b/proxy_agent/Cargo.toml
+@@ -37,7 +37,7 @@ features = [
+ ]
+ 
+ [target.'cfg(not(windows))'.dependencies]
+-sysinfo = "0.28.4"            # read process information for Linux
++sysinfo = "0.30.13"            # read process information for Linux
+ aya = "0.13.1"                # linux ebpf program loader
+ uzers = "0.12.1"              # get user name
+ libc = "0.2.147"              # linux call
+diff --git a/proxy_agent/src/common/helpers.rs b/proxy_agent/src/common/helpers.rs
+index 9050a75..c945e9e 100644
+--- a/proxy_agent/src/common/helpers.rs
++++ b/proxy_agent/src/common/helpers.rs
+@@ -7,7 +7,7 @@ use proxy_agent_shared::misc_helpers;
+ use proxy_agent_shared::telemetry::span::SimpleSpan;
+ 
+ #[cfg(not(windows))]
+-use sysinfo::{System, SystemExt};
++use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+ 
+ #[cfg(windows)]
+ use super::windows;
+@@ -27,8 +27,11 @@ static CURRENT_SYS_INFO: Lazy<(u64, usize)> = Lazy::new(|| {
+     }
+     #[cfg(not(windows))]
+     {
+-        let mut sys = System::new();
+-        sys.refresh_system();
++        let sys = System::new_with_specifics(
++            RefreshKind::new()
++                .with_memory(MemoryRefreshKind::everything())
++                .with_cpu(CpuRefreshKind::everything()),
++        );
+         let ram = sys.total_memory();
+         let ram_in_mb = ram / 1024 / 1024;
+         let cpu_count = sys.cpus().len();
+diff --git a/proxy_agent/src/proxy.rs b/proxy_agent/src/proxy.rs
+index 4f6f0c7..cfce52c 100644
+--- a/proxy_agent/src/proxy.rs
++++ b/proxy_agent/src/proxy.rs
+@@ -47,7 +47,7 @@ use serde_derive::{Deserialize, Serialize};
+ use std::{ffi::OsString, net::IpAddr, path::PathBuf};
+ 
+ #[cfg(not(windows))]
+-use sysinfo::{Pid, PidExt, ProcessExt, System, SystemExt};
++use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System, UpdateKind};
+ 
+ #[derive(Serialize, Deserialize, Clone)]
+ #[allow(non_snake_case)]
+@@ -103,10 +103,18 @@ fn get_process_info(process_id: u32) -> (PathBuf, String) {
+     let mut process_cmd_line = UNDEFINED.to_string();
+ 
+     let pid = Pid::from_u32(process_id);
+-    let mut sys = System::new();
+-    sys.refresh_processes();
++    let sys = System::new_with_specifics(
++        RefreshKind::new().with_processes(
++            ProcessRefreshKind::new()
++                .with_cmd(UpdateKind::Always)
++                .with_exe(UpdateKind::Always),
++        ),
++    );
+     if let Some(p) = sys.process(pid) {
+-        process_name = p.exe().to_path_buf();
++        process_name = match p.exe() {
++            Some(path) => path.to_path_buf(),
++            None => PathBuf::default(),
++        };
+         process_cmd_line = p.cmd().join(" ");
+     }
+ 
+diff --git a/proxy_agent_extension/Cargo.toml b/proxy_agent_extension/Cargo.toml
+index 3c8d08d..585cd3b 100644
+--- a/proxy_agent_extension/Cargo.toml
++++ b/proxy_agent_extension/Cargo.toml
+@@ -35,4 +35,4 @@ features = [
+ ]
+ 
+ [target.'cfg(not(windows))'.dependencies]
+-sysinfo = "0.29.10"            # read process information for Linux
+\ No newline at end of file
++sysinfo = "0.30.13"            # read process information for Linux
