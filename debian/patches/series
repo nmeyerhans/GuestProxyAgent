@@ -4,3 +4,4 @@ use-newer-itertools.patch
 loosen-tokio-util-constraint.patch
 0005-update-tower-http-and-thiserror-deps-to-new-vers.patch
 0006-Update-sysinfo-build-dep.patch
+0007-Drop-more-Windows-dependencies.patch

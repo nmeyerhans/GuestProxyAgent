@@ -1,0 +1,32 @@
+From: Noah Meyerhans <frodo@morgul.net>
+Date: Fri, 24 Jan 2025 18:09:40 -0500
+Subject: Drop more Windows dependencies
+
+---
+ proxy_agent_extension/Cargo.toml | 13 -------------
+ 1 file changed, 13 deletions(-)
+
+diff --git a/proxy_agent_extension/Cargo.toml b/proxy_agent_extension/Cargo.toml
+index 585cd3b..0d482c3 100644
+--- a/proxy_agent_extension/Cargo.toml
++++ b/proxy_agent_extension/Cargo.toml
+@@ -14,19 +14,6 @@ clap = { version = "4.5.17", features =["derive"] } # Command Line Argument Pars
+ thiserror = "1.0.64"
+ tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "macros", "sync"] }
+ 
+-[target.'cfg(windows)'.dependencies]
+-windows-service = "0.7.0"     # windows NT 
+-
+-[target.'cfg(windows)'.build-dependencies]
+-winres = "0.1.12"             # Rust Windows resource helper to add file version
+-static_vcruntime = "2.0.0"    # Statically link the VCRuntime when using the MSVC toolchain
+-
+-[target.'cfg(windows)'.dependencies.windows-sys]
+-version = "0.42.0"
+-features = [
+-  "Win32_Storage_FileSystem",
+-]
+-
+ [target.'cfg(not(windows))'.dependencies.nix]
+ version = "0.29.0"
+ features = [
