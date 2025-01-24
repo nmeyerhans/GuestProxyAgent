@@ -1,0 +1,26 @@
+From: Noah Meyerhans <frodo@morgul.net>
+Date: Fri, 24 Jan 2025 16:01:36 -0500
+Subject: update tower-http and thiserror deps to new versions
+
+---
+ proxy_agent/Cargo.toml | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/proxy_agent/Cargo.toml b/proxy_agent/Cargo.toml
+index a3461a0..cf48550 100644
+--- a/proxy_agent/Cargo.toml
++++ b/proxy_agent/Cargo.toml
+@@ -23,10 +23,10 @@ http = "1.1.0"
+ http-body-util = "0.1"
+ hyper = { version = "1", features = ["server", "http1", "client"] }
+ hyper-util = { version = "0.1", features = ["tokio"] }
+-tower = { version = "0.4", features = ["full"] }
+-tower-http = { version = "0.5.2", features = ["limit"] }
++tower = { version = "0.5.2", features = ["full"] }
++tower-http = { version = "0.6.2", features = ["limit"] }
+ clap = { version = "4.5.17", features =["derive"] } # Command Line Argument Parser 
+-thiserror = "1.0.64"
++thiserror = "2.0"
+ 
+ [dependencies.uuid]
+ version = "1.3.0"

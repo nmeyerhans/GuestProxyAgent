@@ -2,3 +2,4 @@ Remove-some-Windows-dependencies.patch
 Relax-serde-xml-rs-version-requirement.patch
 use-newer-itertools.patch
 loosen-tokio-util-constraint.patch
+0005-update-tower-http-and-thiserror-deps-to-new-vers.patch
