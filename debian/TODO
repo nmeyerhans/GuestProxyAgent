@@ -1,22 +1,14 @@
 ## Dependencies needing packaging
 
-* aya (wait for upstream to update to v0.13.1)
-* aya-obj (wait for upstream to update to v0.2.1)
-* http-body
-* http-body-util
-
-## Dependencies from experimental
-
-* hyper
-* hyper-util
+* aya (v0.13.1)
+* aya-obj (v0.2.1)
+  -> hashbrown (0.14 -> 0.15)
+  -> indexmap rebuild with new hashbrown
+  -> new crate foldhash (0.1)
 
 ## Dependencies need updating
 
 * tower-http (0.4.4 -> 0.5.2)
   -> brotli (6 -> 7)
-  -> tower-layer (0.3.2 -> 0.3.3)
+  -> tower-layer (0.3.2 -> 0.3.3, in experimental)
   -> async-compression
-
-### pending NEW processing
-
-* thread-priority
