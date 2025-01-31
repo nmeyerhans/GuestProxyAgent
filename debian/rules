@@ -5,6 +5,8 @@ include /usr/share/dpkg/architecture.mk
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 ebpf_path:=linux-ebpf
+ebpf_arch=$(subst amd64,x86,$(DEB_TARGET_ARCH))
+
 CARGO_OPTS+=--verbose --manifest-path proxy_agent/Cargo.toml
 BUILD_TYPE?=release
 
@@ -36,7 +38,7 @@ endif
 override_dh_auto_build:
 	if test -f Cargo.lock; then mv Cargo.lock Cargo.lock.upstream; fi
 	cargo build $(CARGO_OPTS) 
-	clang -g -target bpf -O2 -I/usr/include/$(DEB_TARGET_GNU_TYPE) -D__TARGET_ARCH_x86 \
+	clang -g -target bpf -O2 -I/usr/include/$(DEB_TARGET_GNU_TYPE) -D__TARGET_ARCH_$(ebpf_arch) \
 	  -c $(ebpf_path)/ebpf_cgroup.c -o $(ebpf_path)/ebpf_cgroup.o
 
 execute_after_dh_auto_clean:
