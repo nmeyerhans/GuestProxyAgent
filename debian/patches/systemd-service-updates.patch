@@ -1,0 +1,67 @@
+From: Noah Meyerhans <nmeyerhans@microsoft.com>
+Date: Mon, 3 Feb 2025 15:41:30 -0500
+Subject: enable systemd sandboxing features
+
+Author: Noah Meyerhans <nmeyerhans@microsoft.com>
+---
+ .../src/linux/azure-proxy-agent.service            | 43 +++++++++++++++++++++-
+ 1 file changed, 41 insertions(+), 2 deletions(-)
+
+diff --git a/proxy_agent_setup/src/linux/azure-proxy-agent.service b/proxy_agent_setup/src/linux/azure-proxy-agent.service
+index 2f44bb6..ec694cf 100644
+--- a/proxy_agent_setup/src/linux/azure-proxy-agent.service
++++ b/proxy_agent_setup/src/linux/azure-proxy-agent.service
+@@ -1,6 +1,5 @@
+ [Unit]
+ Description=Microsoft Azure GuestProxyAgent
+-DefaultDependencies=no
+ After=local-fs.target
+ Before=network-pre.target
+ Wants=network-pre.target
+@@ -11,5 +10,45 @@ ExecStart=/usr/sbin/azure-proxy-agent
+ Restart=always
+ RestartSec=5
+ 
++ProtectSystem=strict
++LogsDirectory=azure-proxy-agent
++StateDirectory=azure-proxy-agent
++RestrictNamespaces=~user
++RestrictNamespaces=~pid
++RestrictNamespaces=~net
++RestrictNamespaces=~uts
++RestrictNamespaces=~mnt
++CapabilityBoundingSet=~CAP_LEASE
++CapabilityBoundingSet=~CAP_MKNOD
++RestrictNamespaces=~cgroup
++RestrictSUIDSGID=yes
++RestrictNamespaces=~ipc
++ProtectHostname=yes
++CapabilityBoundingSet=~CAP_CHOWN CAP_FSETID SETFCAP
++CapabilityBoundingSet=~CAP_SETUID CAP_SETGID CAP_SETPCAP
++ProtectHome=tmpfs
++ProtectClock=yes
++
++NoNewPrivileges=yes
++PrivateDevices=yes
++DeviceAllow=/dev/console w
++IPAddressAllow=127.0.0.1 168.63.129.16 169.254.169.254
++IPAddressDeny=any
++
++CapabilityBoundingSet=~CAP_SYS_MODULE
++CapabilityBoundingSet=~CAP_SYS_TTY_CONFIG
++CapabilityBoundingSet=~CAP_SYS_BOOT
++CapabilityBoundingSet=~CAP_SYS_CHROOT
++
++SystemCallFilter=~@clock
++SystemCallFilter=~@cpu-emulation
++SystemCallFilter=~@module
++SystemCallFilter=~@mount
++SystemCallFilter=~@obsolete
++SystemCallFilter=~@raw-io
++SystemCallFilter=~@reboot
++SystemCallFilter=~@resources
++SystemCallFilter=~@swap
++
+ [Install]
+-WantedBy=network.target
++WantedBy=multi-user.target
