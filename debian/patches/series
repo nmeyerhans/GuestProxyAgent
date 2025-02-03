@@ -7,3 +7,4 @@ loosen-tokio-util-constraint.patch
 0007-Drop-more-Windows-dependencies.patch
 0008-don-t-build-setup-or-extension-components.patch
 0009-Update-uuid-build-dep-and-drop-macro-diagnostics-fea.patch
+systemd-service-updates.patch
