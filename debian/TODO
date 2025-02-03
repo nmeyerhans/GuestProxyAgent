@@ -1,8 +1,6 @@
 ## outstanding valid lintian issues:
 
 E: azure-guest-proxy-agent: binary-from-other-architecture [usr/lib/azure-guest-proxy-agent/ebpf_cgroup.o]
-W: azure-guest-proxy-agent: copyright-without-copyright-notice
-W: azure-guest-proxy-agent source: debhelper-but-no-misc-depends azure-guest-proxy-agent
 W: azure-guest-proxy-agent: initial-upload-closes-no-bugs [usr/share/doc/azure-guest-proxy-agent/changelog.Debian.gz:1]
 W: azure-guest-proxy-agent: no-manual-page [usr/sbin/azure-proxy-agent]
 W: azure-guest-proxy-agent: systemd-service-file-refers-to-unusual-wantedby-target network.target [usr/lib/systemd/system/azure-guest-proxy-agent.service]

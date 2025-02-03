@@ -43,7 +43,7 @@ Build-Depends:
 
 Package: azure-guest-proxy-agent
 Architecture: amd64 arm64
-Depends: ${shlibs:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Suggests: btrfs-progs, xfsprogs, grub2, udev, e2fsprogs, systemd
 Description: Access control for Micosoft Azure link-local network services
  The Azure guest proxy agent introduces features to control access to
