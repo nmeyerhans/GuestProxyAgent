@@ -1,14 +1,13 @@
-## Dependencies needing packaging
+## outstanding valid lintian issues:
+
+E: azure-guest-proxy-agent: binary-from-other-architecture [usr/lib/azure-guest-proxy-agent/ebpf_cgroup.o]
+W: azure-guest-proxy-agent: copyright-without-copyright-notice
+W: azure-guest-proxy-agent source: debhelper-but-no-misc-depends azure-guest-proxy-agent
+W: azure-guest-proxy-agent: initial-upload-closes-no-bugs [usr/share/doc/azure-guest-proxy-agent/changelog.Debian.gz:1]
+W: azure-guest-proxy-agent: no-manual-page [usr/sbin/azure-proxy-agent]
+W: azure-guest-proxy-agent: systemd-service-file-refers-to-unusual-wantedby-target network.target [usr/lib/systemd/system/azure-guest-proxy-agent.service]
+
+## Dependencies waiting in NEW
 
 * aya (v0.13.1)
 * aya-obj (v0.2.1)
-  -> hashbrown (0.14 -> 0.15)
-  -> indexmap rebuild with new hashbrown
-  -> new crate foldhash (0.1)
-
-## Dependencies need updating
-
-* tower-http (0.4.4 -> 0.5.2)
-  -> brotli (6 -> 7)
-  -> tower-layer (0.3.2 -> 0.3.3, in experimental)
-  -> async-compression
