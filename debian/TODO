@@ -1,7 +1,3 @@
-## outstanding valid lintian issues:
-
-W: azure-guest-proxy-agent: systemd-service-file-refers-to-unusual-wantedby-target network.target [usr/lib/systemd/system/azure-guest-proxy-agent.service]
-
 ## Dependencies waiting in NEW
 
 * aya (v0.13.1)
