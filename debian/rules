@@ -44,7 +44,7 @@ override_dh_auto_build:
 execute_after_dh_auto_clean:
 	if test -f Cargo.lock.upstream; then mv Cargo.lock.upstream Cargo.lock; fi
 	cd proxy_agent && cargo clean --verbose
-	rm -rf $(CARGO_HOME) debian/azure-guest-proxy-agent.service linux-ebpf/ebpf_cgroup.o
+	rm -rf $(CARGO_HOME) debian/azure-proxy-agent.service linux-ebpf/ebpf_cgroup.o
 	rm -rf $(CARGO_REGISTRY)
 
 override_dh_auto_test: out_dir=$(CURDIR)/target/$(BUILD_TYPE)/deps
@@ -55,12 +55,12 @@ ifneq (nocheck,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	cargo test --verbose --release --manifest-path proxy_agent/Cargo.toml -- --test-threads=1
 endif
 
-execute_after_dh_auto_install: TARGET=debian/azure-guest-proxy-agent
+execute_after_dh_auto_install: TARGET=debian/azure-proxy-agent
 execute_after_dh_auto_install:
 	install -m0755 target/$(BUILD_TYPE)/azure-proxy-agent \
           $(TARGET)/usr/sbin
 	install -m0644 debian/proxy-agent.json \
           $(TARGET)/etc/azure/proxy-agent.json
 	install -m0644 proxy_agent_setup/src/linux/azure-proxy-agent.service \
-          debian/azure-guest-proxy-agent.service
+          debian/azure-proxy-agent.service
 	dh_installsystemd

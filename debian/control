@@ -1,4 +1,4 @@
-Source: azure-guest-proxy-agent
+Source: azure-proxy-agent
 Maintainer: AzureRT ProxyAgent V Team <ARTProxyAgentVTeam@microsoft.com>
 Uploaders: Noah Meyerhans <noahm@debian.org>
 Homepage: https://github.com/Azure/GuestProxyAgent
@@ -41,17 +41,17 @@ Build-Depends:
  librust-uzers-dev <!upstream-cargo>,
  rustc
 
-Package: azure-guest-proxy-agent
+Package: azure-proxy-agent
 Architecture: amd64 arm64
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Suggests: btrfs-progs, xfsprogs, grub2, udev, e2fsprogs, systemd
 Description: Access control for Micosoft Azure link-local network services
- The Azure guest proxy agent introduces features to control access to
- potentially sensitive link-local HTTP endpoints within the Microsoft Azure
- cloud environment.  (WireServer IP Endpoint [168.63.129.16] and Instance
- Metadata Service IP Endpoint [169.254.169.254]).  It introduces a new
- component (GuestProxyAgent) which leverages eBPF to intercept the http
- query, and control the access at two levels:
+ The Azure proxy agent introduces features to control access to
+ potentially sensitive link-local HTTP endpoints within the Microsoft
+ Azure cloud environment.  (WireServer IP Endpoint [168.63.129.16] and
+ Instance Metadata Service IP Endpoint [169.254.169.254]).  It
+ introduces a new component (GuestProxyAgent) which leverages eBPF to
+ intercept the http query, and control the access at two levels:
  .
   * Default root only authorization for the WireServer endpoints
     168.63.129.16
