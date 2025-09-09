@@ -44,8 +44,10 @@ override_dh_auto_build:
 execute_after_dh_auto_clean:
 	if test -f Cargo.lock.upstream; then mv Cargo.lock.upstream Cargo.lock; fi
 	cd proxy_agent && cargo clean --verbose
-	rm -rf $(CARGO_HOME) debian/azure-guest-proxy-agent.service linux-ebpf/ebpf_cgroup.o
-	rm -rf $(CARGO_REGISTRY)
+	rm -rf debian/azure-guest-proxy-agent.service linux-ebpf/ebpf_cgroup.o
+ifeq (,$(filter upstream-cargo, $(DEB_BUILD_PROFILES)))
+	rm -rf $(CARGO_HOME) $(CARGO_REGISTRY)
+endif
 
 override_dh_auto_test: out_dir=$(CURDIR)/target/$(BUILD_TYPE)/deps
 override_dh_auto_test:
