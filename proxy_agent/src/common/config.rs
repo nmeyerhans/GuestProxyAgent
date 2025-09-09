@@ -18,8 +18,9 @@
 
 use crate::common::constants;
 use once_cell::sync::Lazy;
-use proxy_agent_shared::{logger_manager::LoggerLevel, misc_helpers};
+use proxy_agent_shared::{logger::LoggerLevel, misc_helpers};
 use serde_derive::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::{path::PathBuf, time::Duration};
 
 #[cfg(not(windows))]
@@ -69,6 +70,14 @@ pub fn get_file_log_level() -> LoggerLevel {
     SYSTEM_CONFIG.get_file_log_level()
 }
 
+pub fn get_file_log_level_for_events() -> Option<LoggerLevel> {
+    SYSTEM_CONFIG.get_file_log_level_for_events()
+}
+
+pub fn get_file_log_level_for_system_events() -> Option<LoggerLevel> {
+    SYSTEM_CONFIG.get_file_log_level_for_system_events()
+}
+
 #[derive(Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub struct Config {
@@ -88,6 +97,10 @@ pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg(not(windows))]
     cgroupRoot: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fileLogLevelForEvents: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fileLogLevelForSystemEvents: Option<String>,
 }
 
 impl Default for Config {
@@ -120,16 +133,25 @@ impl Config {
         })
     }
 
-    pub fn get_log_folder(&self) -> &str {
-        &self.logFolder
+    pub fn get_log_folder(&self) -> String {
+        match misc_helpers::resolve_env_variables(&self.logFolder) {
+            Ok(val) => val,
+            Err(_) => self.logFolder.clone(),
+        }
     }
 
-    pub fn get_event_folder(&self) -> &str {
-        &self.eventFolder
+    pub fn get_event_folder(&self) -> String {
+        match misc_helpers::resolve_env_variables(&self.eventFolder) {
+            Ok(val) => val,
+            Err(_) => self.eventFolder.clone(),
+        }
     }
 
-    pub fn get_latch_key_folder(&self) -> &str {
-        &self.latchKeyFolder
+    pub fn get_latch_key_folder(&self) -> String {
+        match misc_helpers::resolve_env_variables(&self.latchKeyFolder) {
+            Ok(val) => val,
+            Err(_) => self.latchKeyFolder.clone(),
+        }
     }
 
     pub fn get_monitor_interval(&self) -> u64 {
@@ -159,7 +181,7 @@ impl Config {
 
     pub fn get_file_log_level(&self) -> LoggerLevel {
         let file_log_level = self.fileLogLevel.clone().unwrap_or("Info".to_string());
-        LoggerLevel::from_string(&file_log_level)
+        LoggerLevel::from_str(&file_log_level).unwrap_or(LoggerLevel::Info)
     }
 
     #[cfg(not(windows))]
@@ -168,6 +190,22 @@ impl Config {
             Some(cgroup) => PathBuf::from(cgroup),
             None => PathBuf::from(constants::CGROUP_ROOT),
         }
+    }
+
+    pub fn get_file_log_level_for_events(&self) -> Option<LoggerLevel> {
+        if let Some(file_log_level) = &self.fileLogLevelForEvents {
+            let log_level = LoggerLevel::from_str(file_log_level).unwrap_or(LoggerLevel::Info);
+            return Some(log_level);
+        }
+        None
+    }
+
+    pub fn get_file_log_level_for_system_events(&self) -> Option<LoggerLevel> {
+        if let Some(file_log_level) = &self.fileLogLevelForSystemEvents {
+            let log_level = LoggerLevel::from_str(file_log_level).unwrap_or(LoggerLevel::Info);
+            return Some(log_level);
+        }
+        None
     }
 }
 
@@ -250,12 +288,25 @@ mod tests {
             );
         }
 
+        assert_eq!(
+            proxy_agent_shared::logger::LoggerLevel::Info,
+            config.get_file_log_level_for_events().unwrap(),
+            "get_file_log_level_for_events mismatch"
+        );
+
+        assert_eq!(
+            proxy_agent_shared::logger::LoggerLevel::Info,
+            config.get_file_log_level_for_system_events().unwrap(),
+            "get_file_log_level_for_system_events mismatch"
+        );
+
         // clean up
         _ = fs::remove_dir_all(&temp_test_path);
     }
 
     fn create_config_file(file_path: PathBuf) -> Config {
-        let data = r#"{
+        let data = if cfg!(not(windows)) {
+            r#"{
             "logFolder": "C:\\logFolderName",
             "eventFolder": "C:\\eventFolderName",
             "latchKeyFolder": "C:\\latchKeyFolderName",
@@ -264,8 +315,26 @@ mod tests {
             "wireServerSupport": 2,
             "hostGAPluginSupport": 1,
             "imdsSupport": 1,
-            "ebpfProgramName": "ebpfProgramName"
-        }"#;
+            "ebpfProgramName": "ebpfProgramName",
+            "fileLogLevelForEvents": "Info",
+            "fileLogLevelForSystemEvents": "Info"
+        }"#
+        } else {
+            r#"{
+            "logFolder": "%SYSTEMDRIVE%\\logFolderName",
+            "eventFolder": "%SYSTEMDRIVE%\\eventFolderName",
+            "latchKeyFolder": "%SYSTEMDRIVE%\\latchKeyFolderName",
+            "monitorIntervalInSeconds": 60,
+            "pollKeyStatusIntervalInSeconds": 15,
+            "wireServerSupport": 2,
+            "hostGAPluginSupport": 1,
+            "imdsSupport": 1,
+            "ebpfProgramName": "ebpfProgramName",
+            "fileLogLevelForEvents": "Info",
+            "fileLogLevelForSystemEvents": "Info"
+        }"#
+        };
+
         File::create(&file_path)
             .unwrap()
             .write_all(data.as_bytes())

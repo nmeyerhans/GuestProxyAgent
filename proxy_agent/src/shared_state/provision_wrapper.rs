@@ -32,6 +32,7 @@ use crate::common::error::Error;
 use crate::common::logger;
 use crate::common::result::Result;
 use crate::provision::ProvisionFlags;
+use proxy_agent_shared::misc_helpers;
 use tokio::sync::{mpsc, oneshot};
 
 enum ProvisionAction {
@@ -54,10 +55,10 @@ enum ProvisionAction {
     },
     SetProvisionFinished {
         finished: bool,
-        response: oneshot::Sender<bool>,
+        response: oneshot::Sender<i128>,
     },
     GetProvisionFinished {
-        response: oneshot::Sender<bool>,
+        response: oneshot::Sender<i128>,
     },
 }
 
@@ -72,16 +73,15 @@ impl ProvisionSharedState {
             let mut provision_state: ProvisionFlags = ProvisionFlags::NONE;
             // The flag to indicate if the event log threads are initialized
             let mut provision_event_log_threads_initialized: bool = false;
-            // The flag to indicate if the GPA service provision is finished
-            let mut provision_finished: bool = false;
+            // It indicate the time_tick when GPA service provision is finished, 0 means not finished
+            let mut provision_finished_time_tick: i128 = 0;
             while let Some(action) = rx.recv().await {
                 match action {
                     ProvisionAction::UpdateState { state, response } => {
                         provision_state |= state;
                         if let Err(new_state) = response.send(provision_state.clone()) {
                             logger::write_warning(format!(
-                                "Failed to send response to ProvisionAction::UpdateState with new state '{:?}'",
-                                new_state
+                                "Failed to send response to ProvisionAction::UpdateState with new state '{new_state:?}'"
                             ));
                         }
                     }
@@ -89,16 +89,14 @@ impl ProvisionSharedState {
                         provision_state &= !state;
                         if let Err(new_state) = response.send(provision_state.clone()) {
                             logger::write_warning(format!(
-                                "Failed to send response to ProvisionAction::ResetState with new state '{:?}'",
-                                new_state
+                                "Failed to send response to ProvisionAction::ResetState with new state '{new_state:?}'"
                             ));
                         }
                     }
                     ProvisionAction::GetState { response } => {
                         if let Err(state) = response.send(provision_state.clone()) {
                             logger::write_warning(format!(
-                                "Failed to send response to ProvisionAction::GetState with state '{:?}'",
-                                state
+                                "Failed to send response to ProvisionAction::GetState with state '{state:?}'"
                             ));
                         }
                     }
@@ -113,14 +111,17 @@ impl ProvisionSharedState {
                             response.send(provision_event_log_threads_initialized)
                         {
                             logger::write_warning(format!(
-                                "Failed to send response to ProvisionAction::GetEventLogsThreadsInitialized with initialized '{:?}'",
-                                initialized
+                                "Failed to send response to ProvisionAction::GetEventLogsThreadsInitialized with initialized '{initialized:?}'"
                             ));
                         }
                     }
                     ProvisionAction::SetProvisionFinished { finished, response } => {
-                        provision_finished = finished;
-                        if response.send(finished).is_err() {
+                        if finished {
+                            provision_finished_time_tick = misc_helpers::get_date_time_unix_nano();
+                        } else {
+                            provision_finished_time_tick = 0;
+                        }
+                        if response.send(provision_finished_time_tick).is_err() {
                             logger::write_warning(
                                 "Failed to send response to ProvisionAction::SetProvisionFinished"
                                     .to_string(),
@@ -128,10 +129,9 @@ impl ProvisionSharedState {
                         }
                     }
                     ProvisionAction::GetProvisionFinished { response } => {
-                        if let Err(finished) = response.send(provision_finished) {
+                        if let Err(finished) = response.send(provision_finished_time_tick) {
                             logger::write_warning(format!(
-                                "Failed to send response to ProvisionAction::GetProvisionFinished with finished '{:?}'",
-                                finished
+                                "Failed to send response to ProvisionAction::GetProvisionFinished with finished '{finished:?}'"
                             ));
                         }
                     }
@@ -238,7 +238,13 @@ impl ProvisionSharedState {
         })
     }
 
-    pub async fn set_provision_finished(&self, finished: bool) -> Result<bool> {
+    /// Set the provision finished state
+    /// # Arguments
+    /// * `finished` - bool, true means provision finished, false means provision not finished
+    /// # Returns
+    /// * `i128` - the time_tick when the provision finished, 0 means not finished
+    /// # Errors - SendError, RecvError
+    pub async fn set_provision_finished(&self, finished: bool) -> Result<i128> {
         let (tx, rx) = oneshot::channel();
         self.0
             .send(ProvisionAction::SetProvisionFinished {
@@ -256,7 +262,11 @@ impl ProvisionSharedState {
             .map_err(|e| Error::RecvError("ProvisionAction::SetProvisionFinished".to_string(), e))
     }
 
-    pub async fn get_provision_finished(&self) -> Result<bool> {
+    /// Get the provision finished state
+    /// # Returns
+    ///   * `i128` - the time_tick when the provision finished, 0 means not finished
+    /// # Errors - SendError, RecvError
+    pub async fn get_provision_finished(&self) -> Result<i128> {
         let (tx, rx) = oneshot::channel();
         self.0
             .send(ProvisionAction::GetProvisionFinished { response: tx })

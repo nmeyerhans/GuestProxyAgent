@@ -6,58 +6,11 @@
 //! The proxy agent status contains the 'connection summary' of the proxy server.
 //! The proxy agent status contains the 'failed connection summary' of the proxy server.
 //! The proxy agent status contains the 'connection count' of the proxy server.
-//! Example
-//! ```rust
-//! use proxy_agent::shared_state::agent_status_wrapper::{AgentStatusModule, AgentStatusSharedState};
-//! use proxy_agent_shared::proxy_agent_aggregate_status::ModuleState;
-//! use proxy_agent_shared::telemetry::event_logger;
-//! use std::collections::HashMap;
-//! use std::time::Duration;
-//! use tokio::time;
-//!
-//! #[tokio::main]
-//! async fn main() {
-//!    let agent_status_shared_state = AgentStatusSharedState::start_new();
-//!
-//!    let module = AgentStatusModule::KeyKeeper;
-//!    let state = ModuleState::RUNNING;
-//!    let status_message = "KeyKeeper is running".to_string();
-//!    agent_status_shared_state.set_module_state(state.clone(), module.clone()).await.unwrap();
-//!    agent_status_shared_state.set_module_status_message(status_message.clone(), module.clone()).await.unwrap();
-//!    let get_state = agent_status_shared_state.get_module_state(module.clone()).await.unwrap();
-//!    let get_status_message = agent_status_shared_state.get_module_status_message(module.clone()).await.unwrap();
-//!    assert_eq!(state, get_state);
-//!    assert_eq!(status_message, get_status_message);
-//!    let connection_summary = ProxyConnectionSummary {
-//!       count: 1,
-//!       key: "key".to_string(),
-//!    };
-//!    agent_status_shared_state.add_one_connection_summary(connection_summary.clone()).await.unwrap();
-//!    let get_all_connection_summary = agent_status_shared_state.get_all_connection_summary().await.unwrap();
-//!    assert_eq!(1, get_all_connection_summary.len());
-//!    assert_eq!(connection_summary, get_all_connection_summary[0]);
-//!
-//!    let failed_connection_summary = ProxyConnectionSummary {
-//!       count: 1,
-//!       key: "key".to_string(),
-//!    };
-//!    agent_status_shared_state.add_one_failed_connection_summary(failed_connection_summary.clone()).await.unwrap();
-//!    let get_all_failed_connection_summary = agent_status_shared_state.get_all_failed_connection_summary().await.unwrap();
-//!    assert_eq!(1, get_all_failed_connection_summary.len());
-//!    assert_eq!(failed_connection_summary, get_all_failed_connection_summary[0]);
-//!    agent_status_shared_state.clear_all_summary().await.unwrap();
-//!
-//!    let get_connection_count = agent_status_shared_state.get_connection_count().await.unwrap();
-//!    assert_eq!(0, get_connection_count);
-//!    agent_status_shared_state.increase_connection_count().await.unwrap();
-//!    let get_connection_count = agent_status_shared_state.get_connection_count().await.unwrap();
-//!    assert_eq!(1, get_connection_count);
-//! }
-//! ```
 
 use crate::common::logger;
 use crate::common::result::Result;
 use crate::{common::error::Error, proxy::proxy_summary::ProxySummary};
+use proxy_agent_shared::logger::LoggerLevel;
 use proxy_agent_shared::proxy_agent_aggregate_status::{
     ModuleState, ProxyAgentDetailStatus, ProxyConnectionSummary,
 };
@@ -121,6 +74,7 @@ pub enum AgentStatusModule {
     TelemetryLogger,
     Redirector,
     ProxyServer,
+    ProxyAgentStatus,
 }
 
 #[derive(Clone, Debug)]
@@ -140,6 +94,8 @@ impl AgentStatusSharedState {
             let mut redirector_status_message = super::UNKNOWN_STATUS_MESSAGE.to_string();
             let mut proxy_server_state = ModuleState::UNKNOWN;
             let mut proxy_server_status_message = super::UNKNOWN_STATUS_MESSAGE.to_string();
+            let mut proxy_agent_status_state = ModuleState::UNKNOWN;
+            let mut proxy_agent_status_message = super::UNKNOWN_STATUS_MESSAGE.to_string();
 
             // The proxy connection summary from the proxy
             let mut proxy_summary: HashMap<String, ProxyConnectionSummary> = HashMap::new();
@@ -194,9 +150,16 @@ impl AgentStatusSharedState {
                                     proxy_server_status_message = message;
                                 }
                             }
+                            AgentStatusModule::ProxyAgentStatus => {
+                                if proxy_agent_status_message == message {
+                                    updated = false;
+                                } else {
+                                    proxy_agent_status_message = message;
+                                }
+                            }
                         }
                         if response.send(updated).is_err() {
-                            logger::write_warning(format!("Failed to send response to AgentStatusAction::SetStatusMessage for module {:?}", module));
+                            logger::write_warning(format!("Failed to send response to AgentStatusAction::SetStatusMessage for module {module:?}"));
                         }
                     }
                     AgentStatusAction::GetStatusMessage { module, response } => {
@@ -210,11 +173,13 @@ impl AgentStatusSharedState {
                             }
                             AgentStatusModule::Redirector => redirector_status_message.clone(),
                             AgentStatusModule::ProxyServer => proxy_server_status_message.clone(),
+                            AgentStatusModule::ProxyAgentStatus => {
+                                proxy_agent_status_message.clone()
+                            }
                         };
                         if let Err(message) = response.send(message) {
                             logger::write_warning(format!(
-                                "Failed to send response to AgentStatusAction::GetStatusMessage for module '{:?}' with message '{:?}'",
-                                module,message
+                                "Failed to send response to AgentStatusAction::GetStatusMessage for module '{module:?}' with message '{message:?}'"
                             ));
                         }
                     }
@@ -239,9 +204,12 @@ impl AgentStatusSharedState {
                             AgentStatusModule::ProxyServer => {
                                 proxy_server_state = state.clone();
                             }
+                            AgentStatusModule::ProxyAgentStatus => {
+                                proxy_agent_status_state = state.clone();
+                            }
                         }
                         if let Err(state) = response.send(state) {
-                            logger::write_warning(format!("Failed to send response to AgentStatusAction::SetState '{:?}' for module '{:?}'", state, module));
+                            logger::write_warning(format!("Failed to send response to AgentStatusAction::SetState '{state:?}' for module '{module:?}'"));
                         }
                     }
                     AgentStatusAction::GetState { module, response } => {
@@ -251,11 +219,11 @@ impl AgentStatusSharedState {
                             AgentStatusModule::TelemetryLogger => telemetry_logger_state.clone(),
                             AgentStatusModule::Redirector => redirector_state.clone(),
                             AgentStatusModule::ProxyServer => proxy_server_state.clone(),
+                            AgentStatusModule::ProxyAgentStatus => proxy_agent_status_state.clone(),
                         };
                         if let Err(state) = response.send(state) {
                             logger::write_warning(format!(
-                                "Failed to send response to AgentStatusAction::GetState for module '{:?}' with state '{:?}'",
-                                module,state
+                                "Failed to send response to AgentStatusAction::GetState for module '{module:?}' with state '{state:?}'"
                             ));
                         }
                     }
@@ -324,8 +292,7 @@ impl AgentStatusSharedState {
                     AgentStatusAction::GetConnectionCount { response } => {
                         if let Err(count) = response.send(http_connection_count) {
                             logger::write_warning(format!(
-                                "Failed to send response to AgentStatusAction::GetConnectionCount with count '{:?}'",
-                                count
+                                "Failed to send response to AgentStatusAction::GetConnectionCount with count '{count:?}'"
                             ));
                         }
                     }
@@ -334,8 +301,7 @@ impl AgentStatusSharedState {
                         http_connection_count = http_connection_count.overflowing_add(1).0;
                         if let Err(count) = response.send(http_connection_count) {
                             logger::write_warning(format!(
-                                "Failed to send response to AgentStatusAction::IncreaseConnectionCount with count '{:?}'",
-                                count
+                                "Failed to send response to AgentStatusAction::IncreaseConnectionCount with count '{count:?}'"
                             ));
                         }
                     }
@@ -344,8 +310,7 @@ impl AgentStatusSharedState {
                         tcp_connection_count = tcp_connection_count.overflowing_add(1).0;
                         if let Err(count) = response.send(tcp_connection_count) {
                             logger::write_warning(format!(
-                                "Failed to send response to AgentStatusAction::IncreaseTcpConnectionCount with count '{:?}'",
-                                count
+                                "Failed to send response to AgentStatusAction::IncreaseTcpConnectionCount with count '{count:?}'"
                             ));
                         }
                     }
@@ -465,13 +430,13 @@ impl AgentStatusSharedState {
             .await
             .map_err(|e| {
                 Error::SendError(
-                    format!("AgentStatusAction::GetState ({:?})", module),
+                    format!("AgentStatusAction::GetState ({module:?})"),
                     e.to_string(),
                 )
             })?;
         response_rx
             .await
-            .map_err(|e| Error::RecvError(format!("AgentStatusAction::GetState ({:?})", module), e))
+            .map_err(|e| Error::RecvError(format!("AgentStatusAction::GetState ({module:?})"), e))
     }
 
     pub async fn set_module_state(
@@ -489,13 +454,13 @@ impl AgentStatusSharedState {
             .await
             .map_err(|e| {
                 Error::SendError(
-                    format!("AgentStatusAction::SetState ({:?})", module),
+                    format!("AgentStatusAction::SetState ({module:?})"),
                     e.to_string(),
                 )
             })?;
         response_rx
             .await
-            .map_err(|e| Error::RecvError(format!("AgentStatusAction::SetState ({:?})", module), e))
+            .map_err(|e| Error::RecvError(format!("AgentStatusAction::SetState ({module:?})"), e))
     }
 
     pub async fn get_module_status_message(&self, module: AgentStatusModule) -> Result<String> {
@@ -508,13 +473,13 @@ impl AgentStatusSharedState {
             .await
             .map_err(|e| {
                 Error::SendError(
-                    format!("AgentStatusAction::GetStatusMessage ({:?})", module),
+                    format!("AgentStatusAction::GetStatusMessage ({module:?})"),
                     e.to_string(),
                 )
             })?;
         response_rx.await.map_err(|e| {
             Error::RecvError(
-                format!("AgentStatusAction::GetStatusMessage ({:?})", module),
+                format!("AgentStatusAction::GetStatusMessage ({module:?})"),
                 e,
             )
         })
@@ -535,30 +500,42 @@ impl AgentStatusSharedState {
         let (response_tx, response_rx) = oneshot::channel();
         self.0
             .send(AgentStatusAction::SetStatusMessage {
-                message,
+                message: message.to_string(),
                 module: module.clone(),
                 response: response_tx,
             })
             .await
             .map_err(|e| {
                 Error::SendError(
-                    format!("AgentStatusAction::SetStatusMessage ({:?})", module),
+                    format!("AgentStatusAction::SetStatusMessage ({module:?})"),
                     e.to_string(),
                 )
             })?;
-        response_rx.await.map_err(|e| {
+        let update = response_rx.await.map_err(|e| {
             Error::RecvError(
-                format!("AgentStatusAction::SetStatusMessage ({:?})", module),
+                format!("AgentStatusAction::SetStatusMessage ({module:?})"),
                 e,
             )
-        })
+        })?;
+
+        // Log the event if the status message is updated
+        if update {
+            event_logger::write_event(
+                LoggerLevel::Warn,
+                message,
+                "set_module_status_message",
+                &format!("{module:?}"),
+                logger::AGENT_LOGGER_KEY,
+            );
+        }
+        Ok(update)
     }
 
     pub async fn get_module_status(&self, module: AgentStatusModule) -> ProxyAgentDetailStatus {
         let state = match self.get_module_state(module.clone()).await {
             Ok(state) => state,
             Err(e) => {
-                logger::write_warning(format!("Error getting module '{:?}' status: {}", module, e));
+                logger::write_warning(format!("Error getting module '{module:?}' status: {e}"));
                 ModuleState::UNKNOWN
             }
         };
@@ -566,21 +543,19 @@ impl AgentStatusSharedState {
             Ok(message) => message,
             Err(e) => {
                 logger::write_warning(format!(
-                    "Error getting module '{:?}' status message: {}",
-                    module, e
+                    "Error getting module '{module:?}' status message: {e}"
                 ));
                 super::UNKNOWN_STATUS_MESSAGE.to_string()
             }
         };
         if message.len() > MAX_STATUS_MESSAGE_LENGTH {
             event_logger::write_event(
-                event_logger::WARN_LEVEL,
+                LoggerLevel::Warn,
                 format!(
-                    "Status message is too long, truncating to {} characters. Message: {}",
-                    MAX_STATUS_MESSAGE_LENGTH, message
+                    "Status message is too long, truncating to {MAX_STATUS_MESSAGE_LENGTH} characters. Message: {message}"
                 ),
                 "get_status",
-                &format!("{:?}", module),
+                &format!("{state:?}"),
                 logger::AGENT_LOGGER_KEY,
             );
             message = format!("{}...", &message[0..MAX_STATUS_MESSAGE_LENGTH]);
@@ -648,5 +623,156 @@ impl AgentStatusSharedState {
                 e,
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{proxy::proxy_summary::ProxySummary, shared_state};
+    use proxy_agent_shared::proxy_agent_aggregate_status::ModuleState;
+    use std::path::PathBuf;
+
+    #[tokio::test]
+    async fn test_agent_status_shared_state() {
+        let agent_status_shared_state = AgentStatusSharedState::start_new();
+
+        let modules = vec![
+            AgentStatusModule::KeyKeeper,
+            AgentStatusModule::TelemetryReader,
+            AgentStatusModule::TelemetryLogger,
+            AgentStatusModule::Redirector,
+            AgentStatusModule::ProxyServer,
+            AgentStatusModule::ProxyAgentStatus,
+        ];
+
+        for module in modules {
+            let state = agent_status_shared_state
+                .get_module_state(module.clone())
+                .await
+                .unwrap();
+            assert_eq!(ModuleState::UNKNOWN, state);
+            let status_message = agent_status_shared_state
+                .get_module_status_message(module.clone())
+                .await
+                .unwrap();
+            assert_eq!(shared_state::UNKNOWN_STATUS_MESSAGE, status_message);
+
+            let state = ModuleState::RUNNING;
+            let status_message = format!("{:?} is running", module);
+            agent_status_shared_state
+                .set_module_state(state.clone(), module.clone())
+                .await
+                .unwrap();
+            agent_status_shared_state
+                .set_module_status_message(status_message.clone(), module.clone())
+                .await
+                .unwrap();
+            let get_state = agent_status_shared_state
+                .get_module_state(module.clone())
+                .await
+                .unwrap();
+            let get_status_message = agent_status_shared_state
+                .get_module_status_message(module.clone())
+                .await
+                .unwrap();
+            assert_eq!(state, get_state);
+            assert_eq!(status_message, get_status_message);
+        }
+
+        let tcp_id = agent_status_shared_state
+            .increase_tcp_connection_count()
+            .await
+            .unwrap();
+        assert_eq!(1, tcp_id);
+
+        let connection_id = agent_status_shared_state
+            .increase_connection_count()
+            .await
+            .unwrap();
+        assert_eq!(1, connection_id);
+        let connection_count = agent_status_shared_state
+            .get_connection_count()
+            .await
+            .unwrap();
+        assert_eq!(1, connection_count);
+
+        let connection_summary = ProxySummary {
+            id: connection_id,
+            method: "GET".to_string(),
+            url: "/status".to_string(),
+            clientIp: "127.0.0.1".to_string(),
+            clientPort: 6080,
+            ip: "127.0.0.1".to_string(),
+            port: 8080,
+            userId: 999,
+            userName: "user1".to_string(),
+            userGroups: vec!["group1".to_string()],
+            processFullPath: PathBuf::from("C:\\path\\to\\process.exe"),
+            processCmdLine: "process --arg1 --arg2".to_string(),
+            runAsElevated: true,
+            responseStatus: "200 OK".to_string(),
+            elapsedTime: 123,
+            errorDetails: "".to_string(),
+        };
+        agent_status_shared_state
+            .add_one_connection_summary(connection_summary.clone())
+            .await
+            .unwrap();
+        let get_all_connection_summary = agent_status_shared_state
+            .get_all_connection_summary()
+            .await
+            .unwrap();
+        assert_eq!(1, get_all_connection_summary.len());
+        assert_eq!(1, get_all_connection_summary[0].count);
+
+        let connection_id = agent_status_shared_state
+            .increase_connection_count()
+            .await
+            .unwrap();
+        assert_eq!(2, connection_id);
+
+        let failed_connection_summary = ProxySummary {
+            id: connection_id,
+            method: "GET".to_string(),
+            url: "/status".to_string(),
+            clientIp: "127.0.0.1".to_string(),
+            clientPort: 6080,
+            ip: "127.0.0.1".to_string(),
+            port: 8080,
+            userId: 999,
+            userName: "user1".to_string(),
+            userGroups: vec!["group1".to_string()],
+            processFullPath: PathBuf::from("C:\\path\\to\\process.exe"),
+            processCmdLine: "process --arg1 --arg2".to_string(),
+            runAsElevated: true,
+            responseStatus: "500 Internal Server Error".to_string(),
+            elapsedTime: 123,
+            errorDetails: "Some error occurred".to_string(),
+        };
+        agent_status_shared_state
+            .add_one_failed_connection_summary(failed_connection_summary.clone())
+            .await
+            .unwrap();
+        let get_all_failed_connection_summary = agent_status_shared_state
+            .get_all_failed_connection_summary()
+            .await
+            .unwrap();
+        assert_eq!(1, get_all_failed_connection_summary.len());
+
+        // clear all summaries
+        agent_status_shared_state.clear_all_summary().await.unwrap();
+        let get_all_connection_summary = agent_status_shared_state
+            .get_all_connection_summary()
+            .await
+            .unwrap();
+        assert_eq!(0, get_all_connection_summary.len());
+
+        // connection count should not be reset
+        let connection_id = agent_status_shared_state
+            .increase_connection_count()
+            .await
+            .unwrap();
+        assert_eq!(3, connection_id);
     }
 }

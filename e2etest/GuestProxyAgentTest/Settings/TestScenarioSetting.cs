@@ -15,8 +15,7 @@ namespace GuestProxyAgentTest.Settings
         internal string vmImageVersion = "";
         internal string suffixName = new Random().Next(1000).ToString();
         internal string testScenarioClassName = "GuestProxyAgentTest.TestScenarios.BVTScenario";
-        internal int testScenarioTimeoutMilliseconds = 3000 * 60 * 60;
-        
+        internal int testScenarioTimeoutMilliseconds = 1000 * 60 * 120;
 
         internal VMImageDetails VMImageDetails
         {
@@ -55,5 +54,14 @@ namespace GuestProxyAgentTest.Settings
         public string Offer { get; set; } = null!;
         public string Sku { get; set; } = null!;
         public string Version { get; set; } = null!;
+
+        public bool IsArm64
+        {
+            get
+            {
+                return (Offer == null ? false : Offer.Contains("arm64", StringComparison.OrdinalIgnoreCase)) ||
+                  (Sku == null ? false : Sku.Contains("arm64", StringComparison.OrdinalIgnoreCase));
+            }
+        }
     }
 }

@@ -1,7 +1,10 @@
 aab
 AAFFBB
+aarch
 abe
 addrpair
+advapi
+almalinux
 ATL
 ATLMFC
 autobuild
@@ -23,6 +26,7 @@ Bufs
 BUILDIN
 buildroot
 buildshell
+byos
 cacheline
 cbl
 ccbdee
@@ -30,6 +34,7 @@ ccbf
 cicd
 cimv
 cla
+closehandle
 cmds
 codeofconduct
 codeql
@@ -37,6 +42,7 @@ collectguestlogs
 commandline
 comspec
 consoleloggerparameters
+covrec
 CPlat
 cplusplus
 cpptools
@@ -77,13 +83,16 @@ ebpfapi
 EBPFCORE
 egor
 ele
+ent
 entriesread
 EStorage
 etest
 etestoutputs
 etestsharedstorage
 EToken
+etw
 EUID
+EVENTLOG
 evt
 exampledatadiskname
 exampleosdiskname
@@ -97,6 +106,7 @@ fffi
 ffi
 FIXEDFILEINFO
 FOF
+FSETID
 FSO
 fsprogs
 fstorage
@@ -111,8 +121,10 @@ gpalinuxdev
 gpawindev
 guestproxyagentmsis
 guiddef
+handleapi
 hklm
 hlist
+hostga
 httpwg
 Iaa
 idstepsrun
@@ -136,6 +148,7 @@ jobsjob
 joutvhu
 JScript
 keyonly
+kinvolk
 kotlin
 kprobe
 ktime
@@ -150,7 +163,7 @@ logdir
 Loggerhas
 logon
 Lrs
-Lsa
+lsa
 ltsc
 luid
 macikgo
@@ -160,6 +173,8 @@ metabuild
 MFC
 microsoftcblmariner
 microsoftlosangeles
+microsoftwindowsdesktop
+mnt
 msasn
 msp
 msrc
@@ -172,6 +187,7 @@ Newtonsoft
 nic
 nifs
 nmake
+nocapture
 NOCONFIRMATION
 NOERRORUI
 NONINFRINGEMENT
@@ -181,10 +197,11 @@ ntdll
 NTSTATUS
 onscreen
 onebranch
+openprocess
 oneshot
 opencode
 opensource
-percpu
+PERCPU
 pgpkey
 pgrep
 pidof
@@ -196,8 +213,10 @@ pprev
 prandom
 predef
 prefmaxlen
+preprovisioned
 printk
 PROCESSINFOCLASS
+processthreadsapi
 proxyagent
 proxyagentextensionvalidation
 proxyagentvalidation
@@ -208,12 +227,16 @@ RDFE
 redhat
 Redist
 refcnt
+registereventsourcew
 registrykey
 relativeurl
+resf
 reuseport
 rgr
 rgs
-ringbuf
+rhel
+RINGBUF
+rockylinux
 rolename
 rootdir
 rpmbuild
@@ -231,12 +254,15 @@ schtasks
 scm
 secauthz
 serice
+SETFCAP
+SETPCAP
 shd
 sids
 sigid
 SIO
 skc
 sku
+sles
 sln
 smp
 spellright
@@ -250,6 +276,8 @@ stdoutput
 subsecond
 substatus
 Substatuses
+SUIDSGID
+suse
 Swatinem
 SWbem
 sysinfoapi
@@ -268,6 +296,7 @@ thiserror
 timedout
 timeup
 tlsv
+tmpfs
 tokio
 topdir
 totalentries
@@ -305,8 +334,10 @@ wdk
 wdksetup
 Werror
 westus
+wevtapi
 WFP
 winapi
+winbase
 windowsazureguestagent
 winget
 winmgmts
@@ -316,6 +347,7 @@ wireserver
 wireserverand
 wireserverandimds
 WMI
+workarounds
 WORKDIR
 WScript
 wsf
@@ -326,7 +358,7 @@ wsum
 wyy
 xamarin
 xcopy
-xdp
+XDP
 xfsprogs
 xsi
 xxxx

@@ -24,7 +24,7 @@ namespace GuestProxyAgentTest.TestCases
             {
                 Location = GuestProxyAgentTest.Settings.TestSetting.Instance.location,
                 Publisher = "Microsoft.CPlat.ProxyAgent",
-                ExtensionType = "ProxyAgentLinuxTest",
+                ExtensionType = context.ScenarioSetting.VMImageDetails.IsArm64 ? "ProxyAgentLinuxARM64Test" : "ProxyAgentLinuxTest",
                 TypeHandlerVersion = "1.0",
                 AutoUpgradeMinorVersion = false,
                 EnableAutomaticUpgrade = false,
@@ -41,7 +41,7 @@ namespace GuestProxyAgentTest.TestCases
                     FromBlob = false,
                 };
 
-                var result = await vmr.GetVirtualMachineExtensions().CreateOrUpdateAsync(Azure.WaitUntil.Completed, EXTENSION_NAME, vmExtData);
+                var result = await vmr.GetVirtualMachineExtensions().CreateOrUpdateAsync(Azure.WaitUntil.Completed, EXTENSION_NAME, vmExtData, cancellationToken: context.CancellationToken);
                 var provisioningState = result.Value.Data.ProvisioningState;
                 if (result.HasValue && result.Value.Data != null && result.Value.Data.ProvisioningState == "Succeeded")
                 {
@@ -66,7 +66,7 @@ namespace GuestProxyAgentTest.TestCases
             var startTime = DateTime.UtcNow;
             while (true)
             {
-                var vmExtension = await vmr.GetVirtualMachineExtensionAsync(EXTENSION_NAME, expand: "instanceView");
+                var vmExtension = await vmr.GetVirtualMachineExtensionAsync(EXTENSION_NAME, expand: "instanceView", cancellationToken: context.CancellationToken);
                 var instanceView = vmExtension?.Value?.Data?.InstanceView;
                 if (instanceView?.Statuses?.Count > 0 && instanceView.Statuses[0].DisplayStatus == "Provisioning succeeded")
                 {

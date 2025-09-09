@@ -19,8 +19,8 @@ use aya::{Btf, Ebpf, EbpfLoader};
 use ebpf_obj::{
     destination_entry, sock_addr_audit_entry, sock_addr_audit_key, sock_addr_skip_process_entry,
 };
-use proxy_agent_shared::misc_helpers;
 use proxy_agent_shared::telemetry::event_logger;
+use proxy_agent_shared::{logger::LoggerLevel, misc_helpers};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 
@@ -66,11 +66,11 @@ impl BpfObject {
                     let key = sock_addr_skip_process_entry::from_pid(pid);
                     let value = sock_addr_skip_process_entry::from_pid(pid);
                     match skip_process_map.insert(key.to_array(), value.to_array(), 0) {
-                        Ok(_) => logger::write(format!("skip_process_map updated with {}", pid)),
+                        Ok(_) => logger::write(format!("skip_process_map updated with {pid}")),
                         Err(err) => {
                             return Err(Error::Bpf(BpfErrorType::UpdateBpfMapHashMap(
                                 skip_process_map_name.to_string(),
-                                format!("insert pid: {}", pid),
+                                format!("insert pid: {pid}"),
                                 err.to_string(),
                             )));
                         }
@@ -156,8 +156,7 @@ impl BpfObject {
                         match program.attach(cgroup, CgroupAttachMode::Single) {
                             Ok(link_id) => {
                                 logger::write(format!(
-                                    "connect4 program attached with id {:?}.",
-                                    link_id
+                                    "connect4 program attached with id {link_id:?}."
                                 ));
                             }
                             Err(err) => {
@@ -211,8 +210,7 @@ impl BpfObject {
                     match program.attach("tcp_connect", 0) {
                         Ok(link_id) => {
                             logger::write(format!(
-                                "tcp_v4_connect program attached with id {:?}.",
-                                link_id
+                                "tcp_v4_connect program attached with id {link_id:?}."
                             ));
                         }
                         Err(err) => {
@@ -291,7 +289,7 @@ impl BpfObject {
                         match policy_map.remove(&key.to_array()) {
                             Ok(_) => {
                                 event_logger::write_event(
-                                    event_logger::INFO_LEVEL,
+                                    LoggerLevel::Info,
                                     format!(
                                         "policy_map removed for destination: {}:{}",
                                         ip_to_string(dest_ipv4),
@@ -309,7 +307,7 @@ impl BpfObject {
                     } else {
                         let local_ip = constants::PROXY_AGENT_IP.to_string();
                         event_logger::write_event(
-                            event_logger::INFO_LEVEL,
+                            LoggerLevel::Info,
                             format!(
                                 "update_redirect_policy_internal with local ip address: {}, dest_ipv4: {}, dest_port: {}, local_port: {}",
                                 local_ip, ip_to_string(dest_ipv4), dest_port, local_port
@@ -322,7 +320,7 @@ impl BpfObject {
                         let value = destination_entry::from_ipv4(local_ip, local_port);
                         match policy_map.insert(key.to_array(), value.to_array(), 0) {
                             Ok(_) => event_logger::write_event(
-                                event_logger::INFO_LEVEL,
+                                LoggerLevel::Info,
                                 format!(
                                     "policy_map updated for destination: {}:{}",
                                     ip_to_string(dest_ipv4),
@@ -340,8 +338,7 @@ impl BpfObject {
                 }
                 Err(err) => {
                     logger::write(format!(
-                        "Failed to load HashMap 'policy_map' with error: {}",
-                        err
+                        "Failed to load HashMap 'policy_map' with error: {err}"
                     ));
                 }
             },
@@ -360,7 +357,7 @@ impl BpfObject {
                     audit_map.remove(&key.to_array()).map_err(|err| {
                         Error::Bpf(BpfErrorType::MapDeleteElem(
                             source_port.to_string(),
-                            format!("Error: {}", err),
+                            format!("Error: {err}"),
                         ))
                     })?;
                 }
@@ -401,8 +398,8 @@ impl super::Redirector {
             }
             Err(e) => {
                 event_logger::write_event(
-                    event_logger::WARN_LEVEL,
-                    format!("Failed to get the cgroup2 mount path {}, fallback to use the cgroup2 path from config file.", e),
+                    LoggerLevel::Warn,
+                    format!("Failed to get the cgroup2 mount path {e}, fallback to use the cgroup2 path from config file."),
                     "start",
                     "redirector/linux",
                     logger::AGENT_LOGGER_KEY,
@@ -411,9 +408,9 @@ impl super::Redirector {
             }
         };
         if let Err(e) = bpf_object.attach_cgroup_program(cgroup2_path) {
-            let message = format!("Failed to attach cgroup program for redirection. {}", e);
+            let message = format!("Failed to attach cgroup program for redirection. {e}");
             event_logger::write_event(
-                event_logger::WARN_LEVEL,
+                LoggerLevel::Warn,
                 message.to_string(),
                 "start",
                 "redirector",
@@ -459,16 +456,31 @@ pub async fn update_imds_redirect_policy(
     }
 }
 
+pub async fn update_hostga_redirect_policy(
+    redirect: bool,
+    redirector_shared_state: RedirectorSharedState,
+) {
+    if let (Ok(Some(bpf_object)), Ok(local_port)) = (
+        redirector_shared_state.get_bpf_object().await,
+        redirector_shared_state.get_local_port().await,
+    ) {
+        bpf_object.lock().unwrap().update_redirect_policy(
+            constants::GA_PLUGIN_IP_NETWORK_BYTE_ORDER,
+            constants::GA_PLUGIN_PORT,
+            local_port,
+            redirect,
+        );
+    }
+}
+
 #[cfg(test)]
 #[cfg(feature = "test-with-root")]
 mod tests {
     use crate::common::config;
     use crate::common::constants;
-    use crate::common::logger;
     use crate::redirector::linux::ebpf_obj::sock_addr_audit_entry;
     use crate::redirector::linux::ebpf_obj::sock_addr_audit_key;
     use aya::maps::HashMap;
-    use proxy_agent_shared::logger_manager;
     use proxy_agent_shared::misc_helpers;
     use std::env;
 
@@ -482,14 +494,6 @@ mod tests {
         let logger_key = "linux_ebpf_test";
         let mut temp_test_path = env::temp_dir();
         temp_test_path.push(logger_key);
-        logger_manager::init_logger(
-            logger::AGENT_LOGGER_KEY.to_string(), // production code uses 'Agent_Log' to write.
-            temp_test_path.clone(),
-            logger_key.to_string(),
-            10 * 1024 * 1024,
-            20,
-        )
-        .await;
 
         let mut bpf_file_path = misc_helpers::get_current_exe_dir();
         bpf_file_path.push("config::get_ebpf_program_name()");

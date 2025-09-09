@@ -1,0 +1,10 @@
+groupName: Rocky9
+vmImagePublisher: resf
+vmImageOffer: rockylinux-x86_64
+vmImageSku: 9-base
+vmImageVersion: latest
+scenarios:
+  - className: GuestProxyAgentTest.TestScenarios.BVTScenario
+    name: BVTScenario
+  - name: LinuxPackageScenario
+    className: GuestProxyAgentTest.TestScenarios.LinuxPackageScenario

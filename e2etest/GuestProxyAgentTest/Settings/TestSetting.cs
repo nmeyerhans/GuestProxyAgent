@@ -35,7 +35,8 @@ namespace GuestProxyAgentTest.Settings
         internal string zipFilePath = null!;
         internal string sharedStorageAccountUrl = null!;
         internal string testResultFolder = null!;
-        internal int testTimeoutMilliseconds = 1000 * 60 * 120;
+        internal string proxyAgentVersion = null!;
+        internal int testMapTimeoutMilliseconds = 1000 * 60 * 180;
         internal string windowsInVmWireServerAccessControlProfileReferenceId = null!;
         internal string windowsInVmIMDSAccessControlProfileReferenceId = null!;
         internal string linuxInVmWireServerAccessControlProfileReferenceId = null!;
@@ -53,7 +54,7 @@ namespace GuestProxyAgentTest.Settings
 
         private TestSetting() { }
 
-        public static void Init(TestConfig testConfig, string zipFilePath, string testResultFolder)
+        public static void Init(TestConfig testConfig, string zipFilePath, string testResultFolder, string proxyAgentVersion)
         {
             var scriptsFolder = Constants.IS_WINDOWS() ? "Scripts" : "LinuxScripts";
 
@@ -78,6 +79,7 @@ namespace GuestProxyAgentTest.Settings
                 linuxInVmIMDSAccessControlProfileReferenceId = testConfig.LinuxInVmIMDSAccessControlProfileReferenceId,
                 zipFilePath = zipFilePath,
                 testResultFolder = testResultFolder,
+                proxyAgentVersion = proxyAgentVersion,
             };
         }
     }

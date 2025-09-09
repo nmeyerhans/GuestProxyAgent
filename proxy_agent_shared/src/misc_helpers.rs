@@ -4,7 +4,7 @@ use crate::{
     error::{CommandErrorType, Error},
     result::Result,
 };
-use regex::bytes::Regex;
+use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::{
@@ -203,7 +203,7 @@ pub fn search_files(dir: &Path, search_regex_pattern: &str) -> Result<Vec<PathBu
             continue;
         }
         let file_name = get_file_name(&file_full_path);
-        if regex.is_match(file_name.as_bytes()) {
+        if regex.is_match(&file_name) {
             files.push(file_full_path);
         }
     }
@@ -268,13 +268,13 @@ pub fn get_proxy_agent_version(proxy_agent_exe: &Path) -> Result<String> {
     if !proxy_agent_exe.exists() {
         return Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("File '{}' does not found", proxy_agent_exe_str),
+            format!("File '{proxy_agent_exe_str}' does not found"),
         )));
     }
     if !proxy_agent_exe.is_file() {
         return Err(Error::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("'{}' is not a file", proxy_agent_exe_str),
+            format!("'{proxy_agent_exe_str}' is not a file"),
         )));
     }
 
@@ -287,6 +287,23 @@ pub fn get_proxy_agent_version(proxy_agent_exe: &Path) -> Result<String> {
             output.message(),
         ))
     }
+}
+
+/// This function replaces all occurrences of %VAR% in the input string with the value of the environment variable VAR
+/// If the environment variable is not set, it returns the original string with VAR unchanged.
+/// # Arguments
+/// * `input` - The input string to resolve environment variables in
+/// # Returns
+/// A Result containing the resolved string or an error if the regex pattern is invalid
+pub fn resolve_env_variables(input: &str) -> Result<String> {
+    let re = Regex::new(r"%(\w+)%")?;
+    let ret = re
+        .replace_all(input, |caps: &regex::Captures| {
+            std::env::var(&caps[1]).unwrap_or_else(|_| caps[1].to_string())
+        })
+        .to_string();
+
+    Ok(ret)
 }
 
 #[cfg(test)]
@@ -363,10 +380,12 @@ mod tests {
         let program: &str;
         let script_content: &str;
         let script_file_name: &str;
+        let mut args: Vec<&str>;
 
         #[cfg(windows)]
         {
             program = "powershell.exe";
+            args = vec!["-ExecutionPolicy", "Bypass", "-File"];
             script_file_name = "test.ps1";
             script_content = r#"write-host "this is stdout message"
             write-error "This is stderr message"
@@ -376,6 +395,7 @@ mod tests {
         #[cfg(not(windows))]
         {
             program = "sh";
+            args = vec![];
             script_file_name = "test.sh";
             script_content = r#"echo "this is stdout message"
             >&2 echo "This is stderr message"
@@ -386,13 +406,11 @@ mod tests {
         let script_file_path = temp_test_path.join(script_file_name);
         _ = fs::write(&script_file_path, script_content);
 
+        let script_file_path_str = super::path_to_string(&script_file_path);
+        args.push(&script_file_path_str);
+
         let default_error_code = -1;
-        let output = super::execute_command(
-            program,
-            vec![&super::path_to_string(&script_file_path)],
-            default_error_code,
-        )
-        .unwrap();
+        let output = super::execute_command(program, args, default_error_code).unwrap();
         assert_eq!(1, output.exit_code(), "exit code mismatch");
         assert_eq!(
             "this is stdout message",
@@ -498,5 +516,21 @@ mod tests {
         assert_eq!(test.date_time_unix_nano, cloned.date_time_unix_nano);
         assert_eq!(test.long_os_version, cloned.long_os_version);
         assert_eq!(test.current_exe_dir, cloned.current_exe_dir);
+    }
+
+    #[test]
+    fn resolve_env_variables_test() {
+        let input = r"%SYSTEMDRIVE%\%WindowsAzure%\ProxyAgent\Package_1.0.0";
+        let expected = format!(
+            "{}\\WindowsAzure\\ProxyAgent\\Package_1.0.0",
+            env::var("SYSTEMDRIVE").unwrap_or("SYSTEMDRIVE".to_string())
+        );
+        let resolved = super::resolve_env_variables(input).unwrap();
+        assert_eq!(expected, resolved, "resolved string mismatch");
+
+        let input = "/var/log/azure-proxy-agent/";
+        let expected = "/var/log/azure-proxy-agent/".to_string();
+        let resolved = super::resolve_env_variables(input).unwrap();
+        assert_eq!(expected, resolved, "resolved string mismatch");
     }
 }

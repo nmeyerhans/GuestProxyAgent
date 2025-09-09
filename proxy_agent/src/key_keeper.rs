@@ -31,7 +31,6 @@ use crate::common::result::Result;
 use crate::common::{constants, helpers, logger};
 use crate::provision;
 use crate::proxy::authorization_rules::{AuthorizationRulesForLogging, ComputedAuthorizationRules};
-use crate::redirector::Redirector;
 use crate::shared_state::agent_status_wrapper::{AgentStatusModule, AgentStatusSharedState};
 use crate::shared_state::key_keeper_wrapper::KeyKeeperSharedState;
 use crate::shared_state::provision_wrapper::ProvisionSharedState;
@@ -40,6 +39,7 @@ use crate::shared_state::telemetry_wrapper::TelemetrySharedState;
 use crate::shared_state::SharedState;
 use crate::{acl, redirector};
 use hyper::Uri;
+use proxy_agent_shared::logger::LoggerLevel;
 use proxy_agent_shared::misc_helpers;
 use proxy_agent_shared::proxy_agent_aggregate_status::ModuleState;
 use proxy_agent_shared::telemetry::event_logger;
@@ -65,8 +65,8 @@ pub struct KeyKeeper {
     base_url: Uri,
     /// key_dir: the folder to save the key details
     key_dir: PathBuf,
-    /// log_dir: the folder to log the access control rule details
-    log_dir: PathBuf,
+    /// status_dir: the folder to log the access control rule details
+    status_dir: PathBuf,
     /// interval: the interval to poll the secure channel status
     interval: Duration,
     /// cancellation_token: the cancellation token to cancel the key keeper task
@@ -87,14 +87,14 @@ impl KeyKeeper {
     pub fn new(
         base_url: Uri,
         key_dir: PathBuf,
-        log_dir: PathBuf,
+        status_dir: PathBuf,
         interval: Duration,
         shared_state: &SharedState,
     ) -> Self {
         KeyKeeper {
             base_url,
             key_dir,
-            log_dir,
+            status_dir,
             interval,
             cancellation_token: shared_state.get_cancellation_token(),
             key_keeper_shared_state: shared_state.get_key_keeper_shared_state(),
@@ -105,57 +105,10 @@ impl KeyKeeper {
         }
     }
 
-    fn get_dir_to_acl(&self) -> PathBuf {
-        #[cfg(not(windows))]
-        {
-            self.key_dir.clone()
-        }
-
-        #[cfg(windows)]
-        {
-            // ACL the parent folder of the keys folder,
-            // so that all ProxyAgent sub folders could be ACLed too,
-            // including GPA service directory.
-            match self.key_dir.parent() {
-                Some(parent) => parent.to_path_buf(),
-                None => self.key_dir.clone(),
-            }
-        }
-    }
-
     /// poll secure channel status at interval from the WireServer endpoint
     pub async fn poll_secure_channel_status(&self) {
         self.update_status_message("poll secure channel status task started.".to_string(), true)
             .await;
-
-        // launch redirector initialization when the key keeper task is running
-        tokio::spawn({
-            let cancellation_token = self.cancellation_token.clone();
-            let key_keeper_shared_state = self.key_keeper_shared_state.clone();
-            let telemetry_shared_state = self.telemetry_shared_state.clone();
-            let provision_shared_state = self.provision_shared_state.clone();
-            let agent_status_shared_state = self.agent_status_shared_state.clone();
-
-            let redirector = Redirector::new(
-                constants::PROXY_AGENT_PORT,
-                self.redirector_shared_state.clone(),
-                self.key_keeper_shared_state.clone(),
-                agent_status_shared_state.clone(),
-            );
-            async move {
-                redirector.start().await;
-                if redirector.is_started().await {
-                    provision::redirector_ready(
-                        cancellation_token.clone(),
-                        key_keeper_shared_state.clone(),
-                        telemetry_shared_state.clone(),
-                        provision_shared_state.clone(),
-                        agent_status_shared_state.clone(),
-                    )
-                    .await;
-                }
-            }
-        });
 
         if let Err(e) = misc_helpers::try_create_folder(&self.key_dir) {
             logger::write_warning(format!(
@@ -170,7 +123,7 @@ impl KeyKeeper {
             ));
         }
 
-        match acl::acl_directory(self.get_dir_to_acl()) {
+        match acl::acl_directory(self.key_dir.clone()) {
             Ok(()) => {
                 logger::write(format!(
                     "Folder {} ACLed if has not before.",
@@ -183,6 +136,22 @@ impl KeyKeeper {
                     misc_helpers::path_to_string(&self.key_dir),
                     e
                 ));
+            }
+        }
+
+        // acl current executable dir
+        #[cfg(windows)]
+        {
+            if let Ok(current_exe) = std::env::current_exe() {
+                if let Some(current_dir) = current_exe.parent() {
+                    if let Err(e) = acl::acl_directory(current_dir.to_path_buf()) {
+                        logger::write_warning(format!(
+                            "Current executable directory {} ACLed failed with error {}.",
+                            misc_helpers::path_to_string(current_dir),
+                            e
+                        ));
+                    }
+                }
             }
         }
 
@@ -206,7 +175,7 @@ impl KeyKeeper {
         let notify = match self.key_keeper_shared_state.get_notify().await {
             Ok(notify) => notify,
             Err(e) => {
-                logger::write_error(format!("Failed to get notify: {}", e));
+                logger::write_error(format!("Failed to get notify: {e}"));
                 return;
             }
         };
@@ -218,8 +187,7 @@ impl KeyKeeper {
             .await
         {
             logger::write_error(format!(
-                "Failed to set key_keeper module state to 'Running' with error: {} ",
-                e
+                "Failed to set key_keeper module state to 'Running' with error: {e} "
             ));
         }
 
@@ -236,8 +204,7 @@ impl KeyKeeper {
                     Ok(state) => state,
                     Err(e) => {
                         logger::write_warning(format!(
-                            "Failed to get current secure channel state: {}",
-                            e
+                            "Failed to get current secure channel state: {e}"
                         ));
                         UNKNOWN_STATE.to_string()
                     }
@@ -260,19 +227,31 @@ impl KeyKeeper {
                     // this is to handle quicker response to the secure channel state change during VM provisioning.
                     _ = notify.notified() => {
                         if  current_state == DISABLE_STATE || current_state == UNKNOWN_STATE {
-                            logger::write_warning(format!("poll_secure_channel_status task notified and secure channel state is '{}', start poll status now.", current_state));
+                            logger::write_warning(format!("poll_secure_channel_status task notified and secure channel state is '{current_state}', reset states and start poll status now."));
                             provision::key_latch_ready_state_reset(self.provision_shared_state.clone()).await;
+                            if let Err(e) =  self.key_keeper_shared_state.update_current_secure_channel_state(UNKNOWN_STATE.to_string()).await{
+                                logger::write_warning(format!("Failed to update secure channel state to 'Unknown': {e}"));
+                            }
 
                             if start.elapsed().as_millis() > PROVISION_TIMEUP_IN_MILLISECONDS {
                                 // already timeup, reset the start timer
                                 start = Instant::now();
+                                provision_timeup = false;
                             }
                         } else {
+                            // report key latched ready to try update the provision finished time_tick
+                            provision::key_latched(
+                                self.cancellation_token.clone(),
+                                self.key_keeper_shared_state.clone(),
+                                self.telemetry_shared_state.clone(),
+                                self.provision_shared_state.clone(),
+                                self.agent_status_shared_state.clone(),
+                            ).await;
                             let slept_time_in_millisec = time.elapsed().as_millis();
                             let continue_sleep = sleep.as_millis() - slept_time_in_millisec;
                             if continue_sleep > 0 {
                                 let continue_sleep = Duration::from_millis(continue_sleep as u64);
-                                let message = format!("poll_secure_channel_status task notified but secure channel state is '{}', continue with sleep wait for {:?}.", current_state, continue_sleep);
+                                let message = format!("poll_secure_channel_status task notified but secure channel state is '{current_state}', continue with sleep wait for {continue_sleep:?}.");
                                 logger::write_warning(message);
                                 tokio::time::sleep(continue_sleep).await;
                             }
@@ -311,17 +290,19 @@ impl KeyKeeper {
             let status = match key::get_status(&self.base_url).await {
                 Ok(s) => s,
                 Err(e) => {
-                    self.update_status_message(format!("Failed to get key status - {}", e), true)
+                    self.update_status_message(format!("Failed to get key status - {e}"), true)
                         .await;
                     continue;
                 }
             };
-            self.update_status_message(format!("Got key status successfully: {}.", status), true)
+            self.update_status_message(format!("Got key status successfully: {status}."), true)
                 .await;
 
             let mut access_control_rules_changed = false;
             let wireserver_rule_id = status.get_wireserver_rule_id();
             let imds_rule_id: String = status.get_imds_rule_id();
+            let hostga_rule_id: String = status.get_hostga_rule_id();
+
             match self
                 .key_keeper_shared_state
                 .update_wireserver_rule_id(wireserver_rule_id.to_string())
@@ -330,21 +311,20 @@ impl KeyKeeper {
                 Ok((updated, old_wire_server_rule_id)) => {
                     if updated {
                         logger::write_warning(format!(
-                            "Wireserver rule id changed from '{}' to '{}'.",
-                            old_wire_server_rule_id, wireserver_rule_id
+                            "Wireserver rule id changed from '{old_wire_server_rule_id}' to '{wireserver_rule_id}'."
                         ));
                         if let Err(e) = self
                             .key_keeper_shared_state
                             .set_wireserver_rules(status.get_wireserver_rules())
                             .await
                         {
-                            logger::write_error(format!("Failed to set wireserver rules: {}", e));
+                            logger::write_error(format!("Failed to set wireserver rules: {e}"));
                         }
                         access_control_rules_changed = true;
                     }
                 }
                 Err(e) => {
-                    logger::write_warning(format!("Failed to update wireserver rule id: {}", e));
+                    logger::write_warning(format!("Failed to update wireserver rule id: {e}"));
                 }
             }
 
@@ -356,41 +336,72 @@ impl KeyKeeper {
                 Ok((updated, old_imds_rule_id)) => {
                     if updated {
                         logger::write_warning(format!(
-                            "IMDS rule id changed from '{}' to '{}'.",
-                            old_imds_rule_id, imds_rule_id
+                            "IMDS rule id changed from '{old_imds_rule_id}' to '{imds_rule_id}'."
                         ));
                         if let Err(e) = self
                             .key_keeper_shared_state
                             .set_imds_rules(status.get_imds_rules())
                             .await
                         {
-                            logger::write_error(format!("Failed to set imds rules: {}", e));
+                            logger::write_error(format!("Failed to set imds rules: {e}"));
                         }
                         access_control_rules_changed = true;
                     }
                 }
                 Err(e) => {
-                    logger::write_warning(format!("Failed to update imds rule id: {}", e));
+                    logger::write_warning(format!("Failed to update imds rule id: {e}"));
+                }
+            }
+
+            match self
+                .key_keeper_shared_state
+                .update_hostga_rule_id(hostga_rule_id.to_string())
+                .await
+            {
+                Ok((updated, old_hostga_rule_id)) => {
+                    if updated {
+                        logger::write_warning(format!(
+                            "HostGA rule id changed from '{old_hostga_rule_id}' to '{hostga_rule_id}'."
+                        ));
+                        if let Err(e) = self
+                            .key_keeper_shared_state
+                            .set_hostga_rules(status.get_hostga_rules())
+                            .await
+                        {
+                            logger::write_error(format!("Failed to set HostGA rules: {e}"));
+                        }
+                        access_control_rules_changed = true;
+                    }
+                }
+                Err(e) => {
+                    logger::write_warning(format!("Failed to update HostGA rule id: {e}"));
                 }
             }
 
             if access_control_rules_changed {
-                if let (Ok(wireserver_rules), Ok(imds_rules)) = (
+                if let (Ok(wireserver_rules), Ok(imds_rules), Ok(hostga_rules)) = (
                     self.key_keeper_shared_state.get_wireserver_rules().await,
                     self.key_keeper_shared_state.get_imds_rules().await,
+                    self.key_keeper_shared_state.get_hostga_rules().await,
                 ) {
                     let rules = AuthorizationRulesForLogging::new(
                         status.authorizationRules.clone(),
                         ComputedAuthorizationRules {
                             wireserver: wireserver_rules,
                             imds: imds_rules,
+                            hostga: hostga_rules,
                         },
                     );
-                    rules.write_all(&self.log_dir, constants::MAX_LOG_FILE_COUNT);
+                    rules.write_all(&self.status_dir, constants::MAX_LOG_FILE_COUNT);
                 }
             }
 
             let state = status.get_secure_channel_state();
+            let secure_channel_state_updated = self
+                .key_keeper_shared_state
+                .update_current_secure_channel_state(state.to_string())
+                .await;
+
             // check if need fetch the key
             if state != DISABLE_STATE
                 && (status.keyGuid.is_none()  // key has not latched yet
@@ -405,7 +416,7 @@ impl KeyKeeper {
                             if let Err(e) =
                                 self.key_keeper_shared_state.update_key(key.clone()).await
                             {
-                                logger::write_warning(format!("Failed to update key: {}", e));
+                                logger::write_warning(format!("Failed to update key: {e}"));
                             }
 
                             let message = helpers::write_startup_event(
@@ -428,8 +439,8 @@ impl KeyKeeper {
                         }
                         Err(e) => {
                             event_logger::write_event(
-                                event_logger::WARN_LEVEL,
-                                format!("Failed to fetch local key details with error: {:?}. Will try acquire the key details from Server.", e),
+                                LoggerLevel::Info,
+                                format!("Failed to fetch local key details with error: {e:?}. Will try acquire the key details from Server."),
                                 "poll_secure_channel_status",
                                 "key_keeper",
                                 logger::AGENT_LOGGER_KEY,
@@ -447,7 +458,7 @@ impl KeyKeeper {
                         Ok(k) => k,
                         Err(e) => {
                             self.update_status_message(
-                                format!("Failed to acquire key details: {:?}", e),
+                                format!("Failed to acquire key details: {e:?}"),
                                 true,
                             )
                             .await;
@@ -460,11 +471,11 @@ impl KeyKeeper {
                     match Self::store_key(&self.key_dir, &key) {
                         Ok(()) => {
                             logger::write_information(format!(
-                        "Successfully acquired the key '{}' details from server and saved locally.", guid));
+                        "Successfully acquired the key '{guid}' details from server and saved locally."));
                         }
                         Err(e) => {
                             self.update_status_message(
-                                format!("Failed to save key details to file: {:?}", e),
+                                format!("Failed to save key details to file: {e:?}"),
                                 true,
                             )
                             .await;
@@ -476,8 +487,7 @@ impl KeyKeeper {
                     if let Err(e) = Self::check_key(&self.key_dir, &key) {
                         self.update_status_message(
                             format!(
-                                "Failed to check the key '{}' details saved locally: {:?}.",
-                                guid, e
+                                "Failed to check the key '{guid}' details saved locally: {e:?}."
                             ),
                             true,
                         )
@@ -490,7 +500,7 @@ impl KeyKeeper {
                                 if let Err(e) =
                                     self.key_keeper_shared_state.update_key(key.clone()).await
                                 {
-                                    logger::write_warning(format!("Failed to update key: {}", e));
+                                    logger::write_warning(format!("Failed to update key: {e}"));
                                 }
 
                                 let message = helpers::write_startup_event(
@@ -510,7 +520,7 @@ impl KeyKeeper {
                                 .await;
                             }
                             Err(e) => {
-                                logger::write_warning(format!("Failed to attest the key: {:?}", e));
+                                logger::write_warning(format!("Failed to attest the key: {e:?}"));
                                 continue;
                             }
                         }
@@ -518,12 +528,8 @@ impl KeyKeeper {
                 }
             }
 
-            // update the current secure channel state if different
-            match self
-                .key_keeper_shared_state
-                .update_current_secure_channel_state(state.to_string())
-                .await
-            {
+            // update redirect policy if current secure channel state updated
+            match secure_channel_state_updated {
                 Ok(updated) => {
                     if updated {
                         // update the redirector policy map
@@ -534,6 +540,11 @@ impl KeyKeeper {
                         .await;
                         redirector::update_imds_redirect_policy(
                             status.get_imds_mode() != DISABLE_STATE,
+                            self.redirector_shared_state.clone(),
+                        )
+                        .await;
+                        redirector::update_hostga_redirect_policy(
+                            status.get_hostga_mode() != DISABLE_STATE,
                             self.redirector_shared_state.clone(),
                         )
                         .await;
@@ -551,7 +562,7 @@ impl KeyKeeper {
 
                             // clear key in memory for disabled state
                             if let Err(e) = self.key_keeper_shared_state.clear_key().await {
-                                logger::write_warning(format!("Failed to clear key: {}", e));
+                                logger::write_warning(format!("Failed to clear key: {e}"));
                             }
                             provision::key_latched(
                                 self.cancellation_token.clone(),
@@ -565,7 +576,7 @@ impl KeyKeeper {
                     }
                 }
                 Err(e) => {
-                    logger::write_warning(format!("Failed to update secure channel state: {}", e));
+                    logger::write_warning(format!("Failed to update secure channel state: {e}"));
                 }
             }
         }
@@ -578,23 +589,13 @@ impl KeyKeeper {
             .await
         {
             Ok(updated) => {
-                if log_to_file {
-                    if updated {
-                        event_logger::write_event(
-                            event_logger::INFO_LEVEL,
-                            message,
-                            "update_status_message",
-                            "key_keeper",
-                            logger::AGENT_LOGGER_KEY,
-                        );
-                    } else {
-                        // not updated, log at verbose level
-                        logger::write(message);
-                    }
+                if log_to_file && !updated {
+                    // not updated, log at verbose level
+                    logger::write(message);
                 }
             }
             Err(e) => {
-                logger::write_warning(format!("Failed to set module status message: {}", e));
+                logger::write_warning(format!("Failed to set module status message: {e}"));
             }
         }
     }
@@ -610,8 +611,7 @@ impl KeyKeeper {
                     &key_file,
                     serde_json::to_string(&key).map_err(|e| {
                         Error::Key(KeyErrorType::StoreLocalKey(format!(
-                            "serialize key error: {:?} ",
-                            e
+                            "serialize key error: {e:?} "
                         )))
                     })?,
                 )
@@ -684,8 +684,7 @@ impl KeyKeeper {
 
         serde_json::from_str::<Key>(&key_data).map_err(|e| {
             Error::Key(crate::common::error::KeyErrorType::FetchLocalKey(format!(
-                "Parse key data with error: {}",
-                e
+                "Parse key data with error: {e}"
             )))
         })
     }
@@ -698,8 +697,7 @@ impl KeyKeeper {
                 #[cfg(windows)]
                 {
                     logger::write_information(format!(
-                        "Failed to fetch .encrypted file with error: {}. Fallback to fetch .key file for windows platform.",
-                        _e
+                        "Failed to fetch .encrypted file with error: {_e}. Fallback to fetch .key file for windows platform."
                     ));
                 }
 
@@ -754,8 +752,7 @@ impl KeyKeeper {
             .await
         {
             logger::write_warning(format!(
-                "Failed to set key_keeper module state to 'Stopped' with error: {} ",
-                e
+                "Failed to set key_keeper module state to 'Stopped' with error: {e} "
             ));
         }
     }
@@ -764,11 +761,10 @@ impl KeyKeeper {
 #[cfg(test)]
 mod tests {
     use super::key::Key;
-    use crate::common::logger;
     use crate::key_keeper;
     use crate::key_keeper::KeyKeeper;
     use crate::test_mock::server_mock;
-    use proxy_agent_shared::{logger_manager, misc_helpers};
+    use proxy_agent_shared::misc_helpers;
     use std::env;
     use std::fs;
     use std::time::Duration;
@@ -781,14 +777,6 @@ mod tests {
         temp_test_path.push(logger_key);
         // clean up and ignore the clean up errors
         _ = fs::remove_dir_all(&temp_test_path);
-        logger_manager::init_logger(
-            logger_key.to_string(),
-            temp_test_path.clone(),
-            logger_key.to_string(),
-            200,
-            6,
-        )
-        .await;
         _ = misc_helpers::try_create_folder(&temp_test_path);
 
         let key_str = r#"{
@@ -825,8 +813,8 @@ mod tests {
     async fn poll_secure_channel_status_tests() {
         let mut temp_test_path = env::temp_dir();
         temp_test_path.push("poll_secure_channel_status_tests");
-        let mut log_dir = temp_test_path.to_path_buf();
-        log_dir.push("Logs");
+        let mut status_dir = temp_test_path.to_path_buf();
+        status_dir.push("Logs");
         let mut keys_dir = temp_test_path.to_path_buf();
         keys_dir.push("Keys");
 
@@ -837,16 +825,6 @@ mod tests {
                 print!("Failed to remove_dir_all with error {}.", e);
             }
         }
-
-        // init main logger
-        logger_manager::init_logger(
-            logger::AGENT_LOGGER_KEY.to_string(), // production code uses 'Agent_Log' to write.
-            log_dir.clone(),
-            "logger_key".to_string(),
-            10 * 1024 * 1024,
-            20,
-        )
-        .await;
 
         let cancellation_token = CancellationToken::new();
         // start wire_server listener
@@ -867,7 +845,7 @@ mod tests {
         let key_keeper = KeyKeeper {
             base_url: (format!("http://{}:{}/", ip, port)).parse().unwrap(),
             key_dir: cloned_keys_dir.clone(),
-            log_dir: cloned_keys_dir.clone(),
+            status_dir: cloned_keys_dir.clone(),
             interval: Duration::from_millis(10),
             cancellation_token: cancellation_token.clone(),
             key_keeper_shared_state: key_keeper::KeyKeeperSharedState::start_new(),

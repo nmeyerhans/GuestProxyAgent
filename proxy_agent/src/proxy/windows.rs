@@ -11,18 +11,23 @@ use once_cell::sync::Lazy;
 use std::mem::MaybeUninit;
 use std::ptr::null_mut;
 use std::{collections::HashMap, ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf};
-use windows_sys::Win32::Foundation::{BOOL, HANDLE, LUID, NTSTATUS, UNICODE_STRING};
+use windows_sys::Wdk::System::Threading::{
+    NtQueryInformationProcess, // ntdll.dll
+    PROCESSINFOCLASS,
+};
+use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HANDLE, LUID, NTSTATUS, UNICODE_STRING};
 use windows_sys::Win32::Security::Authentication::Identity;
-use windows_sys::Win32::Security::Authentication::Identity::SECURITY_LOGON_SESSION_DATA;
+use windows_sys::Win32::Security::Authentication::Identity::{
+    LSA_UNICODE_STRING, SECURITY_LOGON_SESSION_DATA,
+};
 use windows_sys::Win32::System::ProcessStatus::{
     K32GetModuleBaseNameW,   // kernel32.dll
     K32GetModuleFileNameExW, // kernel32.dll
 };
+use windows_sys::Win32::System::Threading::PROCESS_BASIC_INFORMATION;
 use windows_sys::Win32::System::Threading::{
-    NtQueryInformationProcess, // ntdll.dll
-    OpenProcess,               //kernel32.dll
+    OpenProcess, //kernel32.dll
 };
-use windows_sys::Win32::System::Threading::{PROCESSINFOCLASS, PROCESS_BASIC_INFORMATION};
 
 const LG_INCLUDE_INDIRECT: u32 = 1u32;
 const MAX_PREFERRED_LENGTH: u32 = 4294967295u32;
@@ -36,8 +41,8 @@ fn load_netapi32_dll() -> Library {
     match unsafe { Library::new(dll_name) } {
         Ok(lib) => lib,
         Err(e) => {
-            logger::write_error(format!("Loading {} failed with error: {}.", dll_name, e));
-            panic!("Loading {} failed with error: {}", dll_name, e);
+            logger::write_error(format!("Loading {dll_name} failed with error: {e}."));
+            panic!("Loading {dll_name} failed with error: {e}");
         }
     }
 }
@@ -83,13 +88,15 @@ fn net_user_get_local_groups(
     }
 }
 
+const BUILTIN_SYSTEM_LOGIN_ID_999: u64 = 0x3e7; // SYSTEM user login id
+const BUILTIN_SYSTEM_LOGIN_ID_998: u64 = 0x3e6; // SYSTEM user login id
 static BUILTIN_USERS: Lazy<HashMap<u64, &str>> = Lazy::new(load_users);
 fn load_users() -> HashMap<u64, &'static str> {
     let mut users = HashMap::new();
     users.insert(0x3e4, "NETWORK SERVICE");
     users.insert(0x3e5, "LOCAL SERVICE");
-    users.insert(0x3e6, "SYSTEM");
-    users.insert(0x3e7, "SYSTEM");
+    users.insert(BUILTIN_SYSTEM_LOGIN_ID_998, "SYSTEM");
+    users.insert(BUILTIN_SYSTEM_LOGIN_ID_999, "SYSTEM");
     users.insert(0x3e8, "IIS_IUSRS");
     users.insert(0x3e9, "IUSR");
     users
@@ -99,6 +106,15 @@ fn load_users() -> HashMap<u64, &'static str> {
     Get user name and user group names
 */
 pub fn get_user(logon_id: u64) -> Result<(String, Vec<String>)> {
+    // Check if the logon_id is a built-in SYSTEM user
+    // if it is, return the user name and an empty group list
+    // https://learn.microsoft.com/en-us/windows/security/identity-protection/access-control/local-accounts#default-local-system-accounts
+    // It's an internal account that doesn't show up in User Manager, and it can't be added to any groups.
+    if logon_id == BUILTIN_SYSTEM_LOGIN_ID_998 || logon_id == BUILTIN_SYSTEM_LOGIN_ID_999 {
+        // if logon_id is the SYSTEM user, return it directly
+        return Ok((BUILTIN_USERS[&logon_id].to_string(), Vec::new()));
+    }
+
     let mut user_name;
     let luid = LUID {
         LowPart: (logon_id & 0xFFFFFFFF) as u32, // get lower part of 32 bits
@@ -110,7 +126,7 @@ pub fn get_user(logon_id: u64) -> Result<(String, Vec<String>)> {
     if status != 0 {
         let e = std::io::Error::from_raw_os_error(status as i32);
         return Err(Error::WindowsApi(
-            WindowsApiErrorType::LsaGetLogonSessionData(format!("failed with os error: {}", e)),
+            WindowsApiErrorType::LsaGetLogonSessionData(format!("failed with os error: {e}")),
         ));
     }
 
@@ -118,13 +134,14 @@ pub fn get_user(logon_id: u64) -> Result<(String, Vec<String>)> {
     if session_data.UserName.Length != 0 {
         user_name = from_unicode_string(&session_data.UserName);
     } else {
-        let e = std::io::Error::last_os_error();
-        return Err(Error::WindowsApi(
-            WindowsApiErrorType::LsaGetLogonSessionData(format!(
-                "could not get the user name: {}",
-                e
-            )),
+        // When calling LsaGetLogonSessionData and receiving a successful return code,
+        // but finding that SECURITY_LOGON_SESSION_DATA->UserName.Length is 0,
+        // it typically means that the logon session exists but does not have an associated username.
+        logger::write_warning(format!(
+            "LsaGetLogonSessionData with logon id '{logon_id}' success, but user name is empty."
         ));
+        // return OK with UNDEFINED user name and empty groups
+        return Ok((super::UNDEFINED.to_string(), Vec::new()));
     }
     let mut domain_user_name = user_name.clone();
     if session_data.LogonDomain.Length != 0 {
@@ -164,8 +181,7 @@ pub fn get_user(logon_id: u64) -> Result<(String, Vec<String>)> {
     } else {
         let e = std::io::Error::from_raw_os_error(status as i32);
         logger::write_warning(format!(
-            "NetUserGetLocalGroups '{}' failed ({}) with os error: {}",
-            domain_user_name, status, e
+            "NetUserGetLocalGroups '{domain_user_name}' failed ({status}) with os error: {e}"
         ));
     }
 
@@ -177,8 +193,8 @@ pub fn get_user(logon_id: u64) -> Result<(String, Vec<String>)> {
     Ok((user_name, user_groups))
 }
 
-fn from_unicode_string(unicode_string: &UNICODE_STRING) -> String {
-    let mut v = vec![0u16; unicode_string.MaximumLength as usize];
+fn from_unicode_string(unicode_string: &LSA_UNICODE_STRING) -> String {
+    let mut v = vec![0u16; unicode_string.Length as usize];
     unsafe {
         std::ptr::copy_nonoverlapping(
             unicode_string.Buffer,
@@ -253,21 +269,50 @@ pub fn query_basic_process_info(handler: isize) -> Result<PROCESS_BASIC_INFORMAT
         Ok(process_basic_information)
     }
 }
+
+/// Get process handler by pid
+/// # Arguments
+/// * `pid` - Process ID
+/// # Returns
+/// * `Result<HANDLE>` - Process handler
+/// # Errors
+/// * `Error::Invalid` - If the pid is 0
+/// * `Error::WindowsApi` - If the OpenProcess call fails
+/// # Safety
+/// This function is safe to call as it does not dereference any raw pointers.
+/// However, the caller is responsible for closing the process handler using `close_process_handler`
+/// when it is no longer needed to avoid resource leaks.
 pub fn get_process_handler(pid: u32) -> Result<HANDLE> {
     if pid == 0 {
         return Err(Error::Invalid("pid 0".to_string()));
     }
     let options = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ;
 
-    unsafe {
-        let handler = OpenProcess(options, FALSE, pid);
-        if handler == 0 {
+    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocess
+    let handler = unsafe { OpenProcess(options, FALSE, pid) };
+    if handler == 0 {
+        return Err(Error::WindowsApi(WindowsApiErrorType::WindowsOsError(
+            std::io::Error::last_os_error(),
+        )));
+    }
+    Ok(handler)
+}
+
+/// Close process handler
+/// # Arguments
+/// * `handler` - Process handler
+/// # Returns
+/// * `Result<()>` - Ok if successful, Err if failed
+pub fn close_process_handler(handler: HANDLE) -> Result<()> {
+    if handler != 0 {
+        // https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
+        if 0 != unsafe { CloseHandle(handler) } {
             return Err(Error::WindowsApi(WindowsApiErrorType::WindowsOsError(
                 std::io::Error::last_os_error(),
             )));
         }
-        Ok(handler)
     }
+    Ok(())
 }
 
 pub fn get_process_cmd(handler: isize) -> Result<String> {
@@ -289,7 +334,7 @@ pub fn get_process_cmd(handler: isize) -> Result<String> {
                 std::io::Error::from_raw_os_error(status),
             )));
         }
-        println!("return_length: {}", return_length);
+        println!("return_length: {return_length}");
 
         let buf_len = (return_length as usize) / 2;
         let mut buffer: Vec<u16> = vec![0; buf_len + 1];
@@ -303,7 +348,7 @@ pub fn get_process_cmd(handler: isize) -> Result<String> {
             &mut return_length as *mut _,
         );
         if status < 0 {
-            eprintln!("NtQueryInformationProcess failed with status: {}", status);
+            eprintln!("NtQueryInformationProcess failed with status: {status}");
             return Err(Error::WindowsApi(WindowsApiErrorType::WindowsOsError(
                 std::io::Error::from_raw_os_error(status),
             )));
@@ -376,13 +421,6 @@ mod tests {
                 println!("UserName: {}", user_name);
                 println!("UserGroups: {}", user_groups.join(", "));
                 assert_ne!(String::new(), user_name, "user_name cannot be empty.");
-                if user_name.to_lowercase() == "undefined" {
-                    println!("user_name cannot be 'undefined'");
-                    continue;
-                }
-                if user_groups.is_empty() {
-                    return;
-                }
             }
             // Couldn't find any user with group in our internal test environment
             // assert!(

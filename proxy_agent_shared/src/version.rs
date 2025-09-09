@@ -1,9 +1,10 @@
-use std::fmt::{Display, Formatter};
 // Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
 use crate::error::{Error, ParseVersionErrorType};
 use crate::result::Result;
+use std::fmt::{Display, Formatter};
 
+#[derive(Clone)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -84,14 +85,14 @@ impl Display for Version {
         let mut ver = format!("{}.{}", self.major, self.minor);
 
         if let Some(b) = self.build {
-            ver = format!("{}.{}", ver, b);
+            ver = format!("{ver}.{b}");
 
             if let Some(r) = self.revision {
-                ver = format!("{}.{}", ver, r);
+                ver = format!("{ver}.{r}");
             }
         }
 
-        write!(f, "{}", ver)
+        write!(f, "{ver}")
     }
 }
 

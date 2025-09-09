@@ -1,13 +1,12 @@
-﻿// Copyright (c) Microsoft Corporation
+// Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
+using Azure;
 using Azure.Core;
-using Azure.ResourceManager.Compute.Models;
+using Azure.ResourceManager;
 using Azure.ResourceManager.Compute;
+using Azure.ResourceManager.Compute.Models;
 using Azure.ResourceManager.Network;
 using Azure.ResourceManager.Resources;
-using Azure.ResourceManager;
-using Azure;
-using Microsoft.Azure.Management.ResourceManager.Fluent;
 using GuestProxyAgentTest.Settings;
 
 namespace GuestProxyAgentTest.Utilities
@@ -24,7 +23,14 @@ namespace GuestProxyAgentTest.Utilities
         private string pubIpName = "";
         private string rgName = "";
         private string adminUsername = "testuser";
-        private string adminPassword = SdkContext.RandomResourceName("pP@1", 15);
+        private string adminPassword = new ResourceNamer("").RandomName("pP@1", 15);
+
+        // In order to use the plan, we need to accept the terms first.
+        // https://learn.microsoft.com/en-us/cli/azure/vm/image/terms?view=azure-cli-latest#az-vm-image-terms-accept
+        // az vm image terms accept --urn almalinux:almalinux:9:latest --subscription <subscriptionId>
+        // az vm image terms accept --urn kinvolk:flatcar:stable:latest --subscription <subscriptionId>
+        // az vm image terms accept --urn resf:rockylinux-x86_64:9-base:latest --subscription <subscriptionId>
+        private readonly string[] PLAN_REQUIRED_IMAGES = new string[] { "almalinux", "kinvolk", "resf" };
 
         public VMBuilder() { }
 
@@ -49,7 +55,7 @@ namespace GuestProxyAgentTest.Utilities
         /// Build Build and return the VirtualMachine based on the setting
         /// </summary>
         /// <returns></returns>
-        public async Task<VirtualMachineResource> Build(bool enableProxyAgent)
+        public async Task<VirtualMachineResource> Build(bool enableProxyAgent, CancellationToken cancellationToken)
         {
             PreCheck();
             ArmClient client = new(new GuestProxyAgentE2ETokenCredential(), defaultSubscriptionId: TestSetting.Instance.subscriptionId);
@@ -68,9 +74,17 @@ namespace GuestProxyAgentTest.Utilities
 
             VirtualMachineCollection vmCollection = rgr.GetVirtualMachines();
             Console.WriteLine("Creating virtual machine...");
-            var vmr = (await vmCollection.CreateOrUpdateAsync(WaitUntil.Completed, this.vmName, await DoCreateVMData(rgr, enableProxyAgent))).Value;
+            var vmr = (await vmCollection.CreateOrUpdateAsync(WaitUntil.Completed, this.vmName, await DoCreateVMData(rgr, enableProxyAgent), cancellationToken: cancellationToken)).Value;
             Console.WriteLine("Virtual machine created, with id: " + vmr.Id);
             return vmr;
+        }
+
+        public async Task<VirtualMachineResource> GetVirtualMachineResource()
+        {
+            PreCheck();
+            ArmClient client = new(new GuestProxyAgentE2ETokenCredential(), defaultSubscriptionId: TestSetting.Instance.subscriptionId);
+            var sub = await client.GetDefaultSubscriptionAsync();
+            return sub.GetResourceGroups().Get(this.rgName).Value.GetVirtualMachine(this.vmName);
         }
 
         private async Task<VirtualMachineData> DoCreateVMData(ResourceGroupResource rgr, bool enableProxyAgent)
@@ -149,6 +163,23 @@ namespace GuestProxyAgentTest.Utilities
                 };
             }
 
+            if (PLAN_REQUIRED_IMAGES.Contains(this.testScenarioSetting.VMImageDetails.Publisher))
+            {
+                vmData.Plan = new ComputePlan()
+                {
+                    Name = this.testScenarioSetting.VMImageDetails.Sku,
+                    Publisher = this.testScenarioSetting.VMImageDetails.Publisher,
+                    Product = this.testScenarioSetting.VMImageDetails.Offer,
+                };
+            }
+
+            if (this.testScenarioSetting.VMImageDetails.IsArm64)
+            {
+                // workarounds to use ARM64 VM Extension
+                vmData.Tags.Add(Constants.TAGS_ENFORCE_ARCHITECTURE_TYPE_FOR_EXTENSIONS, "true");
+                vmData.Tags.Add(Constants.TAGS_MUST_NOT_REUSE_PREPROVISIONED_VM, "true");
+            }
+
             return vmData;
         }
 
@@ -170,6 +201,7 @@ namespace GuestProxyAgentTest.Utilities
                     {
                         Name = "default",
                         AddressPrefix = "10.0.0.0/24",
+                        DefaultOutboundAccess = false
                     }
                 }
             });

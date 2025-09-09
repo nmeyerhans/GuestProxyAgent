@@ -16,10 +16,10 @@ pub mod telemetry;
 #[cfg(test)]
 pub mod test_mock;
 
-use clap::{Parser, Subcommand};
+use common::cli::{Commands, CLI};
 use common::constants;
 use common::helpers;
-use provision::ProvisionQuery;
+use provision::provision_query::ProvisionQuery;
 use proxy_agent_shared::misc_helpers;
 use shared_state::SharedState;
 use std::{process, time::Duration};
@@ -27,7 +27,7 @@ use std::{process, time::Duration};
 #[cfg(windows)]
 use common::logger;
 #[cfg(windows)]
-use service::windows;
+use service::windows_main;
 #[cfg(windows)]
 use std::ffi::OsString;
 #[cfg(windows)]
@@ -41,36 +41,6 @@ define_windows_service!(ffi_service_main, proxy_agent_windows_service_main);
 static ASYNC_RUNTIME_HANDLE: tokio::sync::OnceCell<tokio::runtime::Handle> =
     tokio::sync::OnceCell::const_new();
 
-/// azure-proxy-agent console - launch a long run process of GPA in console mode.
-/// azure-proxy-agent --version - print the version of the GPA.
-/// azure-proxy-agent --status [--wait <seconds>] - get the provision status of the GPA service.
-/// azure-proxy-agent - start the GPA as an OS service.
-///                     The GPA service will be started as an OS service in the background.
-#[derive(Parser)]
-#[command()]
-struct Cli {
-    /// get the provision status of the GPA service
-    #[arg(short, long)]
-    status: bool,
-
-    /// wait for the provision status to finish
-    #[arg(short, long, requires = "status")]
-    wait: Option<u64>,
-
-    /// print the version of the GPA
-    #[arg(short, long)]
-    version: bool,
-
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// launch a long run process of GPA in console mode
-    Console,
-}
-
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     // set the tokio runtime handle
@@ -82,17 +52,15 @@ async fn main() {
     // start the Instant to calculate the elapsed time
     let _time = helpers::get_elapsed_time_in_millisec();
 
-    let cli = Cli::parse();
-
-    if cli.version {
+    if CLI.version {
         println!("{}", misc_helpers::get_current_version());
         return;
     }
 
-    if cli.status {
+    if CLI.status {
         // --wait parameter to wait for the provision status until the given time in seconds
         // it is an optional, if not provided then it will query the provision state once by waiting for 0 seconds.
-        let wait_time = cli.wait.unwrap_or(0);
+        let wait_time = CLI.wait.unwrap_or(0);
         let state = ProvisionQuery::new(
             constants::PROXY_AGENT_PORT,
             Some(Duration::from_secs(wait_time)),
@@ -114,7 +82,7 @@ async fn main() {
         }
     }
 
-    if let Some(Commands::Console) = cli.command {
+    if let Some(Commands::Console) = CLI.command {
         // console mode - start GPA as long running process
         let shared_state = SharedState::start_all();
         service::start_service(shared_state.clone()).await;
@@ -129,7 +97,7 @@ async fn main() {
             match service_dispatcher::start(constants::PROXY_AGENT_SERVICE_NAME, ffi_service_main) {
                 Ok(_) => {}
                 Err(e) => {
-                    logger::write_error(format!("Error in starting the service dispatcher: {}", e));
+                    logger::write_error(format!("Error in starting the service dispatcher: {e}"));
                 }
             }
         }
@@ -152,8 +120,8 @@ fn proxy_agent_windows_service_main(_args: Vec<OsString>) {
         .get()
         .expect("You must provide the Tokio runtime handle before this function is called");
     handle.block_on(async {
-        if let Err(e) = windows::run_service().await {
-            logger::write_error(format!("Error in running the service: {}", e));
+        if let Err(e) = windows_main::run_service().await {
+            logger::write_error(format!("Error in running the service: {e}"));
         }
     });
 }

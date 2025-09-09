@@ -74,6 +74,13 @@ enum KeyKeeperAction {
     GetImdsRuleId {
         response: oneshot::Sender<String>,
     },
+    GetHostGARuleId {
+        response: oneshot::Sender<String>,
+    },
+    SetHostGARuleId {
+        rule_id: String,
+        response: oneshot::Sender<()>,
+    },
     SetWireServerRules {
         rules: Option<ComputedAuthorizationItem>,
         response: oneshot::Sender<()>,
@@ -86,6 +93,13 @@ enum KeyKeeperAction {
         response: oneshot::Sender<()>,
     },
     GetImdsRules {
+        response: oneshot::Sender<Option<ComputedAuthorizationItem>>,
+    },
+    SetHostGARules {
+        rules: Option<ComputedAuthorizationItem>,
+        response: oneshot::Sender<()>,
+    },
+    GetHostGARules {
         response: oneshot::Sender<Option<ComputedAuthorizationItem>>,
     },
     GetNotify {
@@ -110,10 +124,14 @@ impl KeyKeeperSharedState {
             let mut wireserver_rule_id: String = String::new();
             // The rule ID for the IMDS endpoints
             let mut imds_rule_id: String = String::new();
+            // The rule ID for the HostGA endpoints
+            let mut hostga_rule_id: String = String::new();
             // The authorization rules for the WireServer endpoints
             let mut wireserver_rules: Option<ComputedAuthorizationItem> = None;
             // The authorization rules for the IMDS endpoints
             let mut imds_rules: Option<ComputedAuthorizationItem> = None;
+            // The authorization rules for the HostGAPlugin endpoints
+            let mut hostga_rules: Option<ComputedAuthorizationItem> = None;
 
             let notify = Arc::new(Notify::new());
             loop {
@@ -142,16 +160,14 @@ impl KeyKeeperSharedState {
                         current_secure_channel_state = state.to_string();
                         if response.send(()).is_err() {
                             logger::write_warning(format!(
-                                "Failed to send response to KeyKeeperAction::SetSecureChannelState '{}' ",
-                                state
+                                "Failed to send response to KeyKeeperAction::SetSecureChannelState '{state}' "
                             ));
                         }
                     }
                     Some(KeyKeeperAction::GetSecureChannelState { response }) => {
                         if let Err(state) = response.send(current_secure_channel_state.clone()) {
                             logger::write_warning(format!(
-                                "Failed to send response to KeyKeeperAction::GetSecureChannelState '{}'",
-                                state
+                                "Failed to send response to KeyKeeperAction::GetSecureChannelState '{state}'"                                
                             ));
                         }
                     }
@@ -159,16 +175,14 @@ impl KeyKeeperSharedState {
                         wireserver_rule_id = rule_id.to_string();
                         if response.send(()).is_err() {
                             logger::write_warning(format!(
-                                "Failed to send response to KeyKeeperAction::SetWireServerRuleId '{}'",
-                                rule_id
+                                "Failed to send response to KeyKeeperAction::SetWireServerRuleId '{rule_id}'"                                
                             ));
                         }
                     }
                     Some(KeyKeeperAction::GetWireServerRuleId { response }) => {
                         if let Err(rule_id) = response.send(wireserver_rule_id.clone()) {
                             logger::write_warning(format!(
-                                "Failed to send response to KeyKeeperAction::GetWireServerRuleId '{}'",
-                                rule_id
+                                "Failed to send response to KeyKeeperAction::GetWireServerRuleId '{rule_id}'"                                
                             ));
                         }
                     }
@@ -176,16 +190,29 @@ impl KeyKeeperSharedState {
                         imds_rule_id = rule_id.to_string();
                         if response.send(()).is_err() {
                             logger::write_warning(format!(
-                                "Failed to send response to KeyKeeperAction::SetImdsRuleId '{}'",
-                                rule_id
+                                "Failed to send response to KeyKeeperAction::SetImdsRuleId '{rule_id}'"                                
                             ));
                         }
                     }
                     Some(KeyKeeperAction::GetImdsRuleId { response }) => {
                         if let Err(rule_id) = response.send(imds_rule_id.clone()) {
                             logger::write_warning(format!(
-                                "Failed to send response to KeyKeeperAction::GetImdsRuleId '{}'",
-                                rule_id
+                                "Failed to send response to KeyKeeperAction::GetImdsRuleId '{rule_id}'"
+                            ));
+                        }
+                    }
+                    Some(KeyKeeperAction::GetHostGARuleId { response }) => {
+                        if let Err(rule_id) = response.send(hostga_rule_id.clone()) {
+                            logger::write_warning(format!(
+                                "Failed to send response to KeyKeeperAction::GetHostGARuleId '{rule_id}'"                                
+                            ));
+                        }
+                    }
+                    Some(KeyKeeperAction::SetHostGARuleId { rule_id, response }) => {
+                        hostga_rule_id = rule_id.to_string();
+                        if response.send(()).is_err() {
+                            logger::write_warning(format!(
+                                "Failed to send response to KeyKeeperAction::SetHostGARuleId '{rule_id}'"                                
                             ));
                         }
                     }
@@ -219,6 +246,23 @@ impl KeyKeeperSharedState {
                         if response.send(imds_rules.clone()).is_err() {
                             logger::write_warning(
                                 "Failed to send response to KeyKeeperAction::GetImdsRules"
+                                    .to_string(),
+                            );
+                        }
+                    }
+                    Some(KeyKeeperAction::SetHostGARules { rules, response }) => {
+                        hostga_rules = rules;
+                        if response.send(()).is_err() {
+                            logger::write_warning(
+                                "Failed to send response to KeyKeeperAction::SetHostGARules"
+                                    .to_string(),
+                            );
+                        }
+                    }
+                    Some(KeyKeeperAction::GetHostGARules { response }) => {
+                        if response.send(hostga_rules.clone()).is_err() {
+                            logger::write_warning(
+                                "Failed to send response to KeyKeeperAction::GetHostGARules"
                                     .to_string(),
                             );
                         }
@@ -434,6 +478,56 @@ impl KeyKeeperSharedState {
         }
     }
 
+    pub async fn get_hostga_rule_id(&self) -> Result<String> {
+        let (response, receiver) = oneshot::channel();
+        self.0
+            .send(KeyKeeperAction::GetHostGARuleId { response })
+            .await
+            .map_err(|e| {
+                Error::SendError(
+                    "KeyKeeperAction::GetHostGARuleId".to_string(),
+                    e.to_string(),
+                )
+            })?;
+        receiver
+            .await
+            .map_err(|e| Error::RecvError("KeyKeeperAction::GetHostGARuleId".to_string(), e))
+    }
+
+    async fn set_hostga_rule_id(&self, rule_id: String) -> Result<()> {
+        let (response, receiver) = oneshot::channel();
+        self.0
+            .send(KeyKeeperAction::SetHostGARuleId { rule_id, response })
+            .await
+            .map_err(|e| {
+                Error::SendError(
+                    "KeyKeeperAction::SetHostGARuleId".to_string(),
+                    e.to_string(),
+                )
+            })?;
+        receiver
+            .await
+            .map_err(|e| Error::RecvError("KeyKeeperAction::SetHostGARuleId".to_string(), e))
+    }
+
+    /// Update the HostGA rule ID
+    /// # Arguments
+    /// * `rule_id` - String
+    /// # Returns
+    /// * `bool` - true if the rule ID is update successfully
+    /// *        - false if rule ID is the same as the current state  
+    /// * `String` - the rule Id before the update operation
+    /// * `Error` - Error if the rule ID is not read or updated successfully
+    pub async fn update_hostga_rule_id(&self, rule_id: String) -> Result<(bool, String)> {
+        let old_rule_id = self.get_hostga_rule_id().await?;
+        if old_rule_id == rule_id {
+            Ok((false, old_rule_id))
+        } else {
+            self.set_hostga_rule_id(rule_id).await?;
+            Ok((true, old_rule_id))
+        }
+    }
+
     pub async fn set_wireserver_rules(&self, rules: Option<AuthorizationItem>) -> Result<()> {
         let (response, receiver) = oneshot::channel();
         self.0
@@ -498,6 +592,35 @@ impl KeyKeeperSharedState {
             .map_err(|e| Error::RecvError("KeyKeeperAction::GetImdsRules".to_string(), e))
     }
 
+    pub async fn set_hostga_rules(&self, rules: Option<AuthorizationItem>) -> Result<()> {
+        let (response, receiver) = oneshot::channel();
+        self.0
+            .send(KeyKeeperAction::SetHostGARules {
+                rules: rules.map(ComputedAuthorizationItem::from_authorization_item),
+                response,
+            })
+            .await
+            .map_err(|e| {
+                Error::SendError("KeyKeeperAction::SetHostGARules".to_string(), e.to_string())
+            })?;
+        receiver
+            .await
+            .map_err(|e| Error::RecvError("KeyKeeperAction::SetHostGARules".to_string(), e))
+    }
+
+    pub async fn get_hostga_rules(&self) -> Result<Option<ComputedAuthorizationItem>> {
+        let (response, receiver) = oneshot::channel();
+        self.0
+            .send(KeyKeeperAction::GetHostGARules { response })
+            .await
+            .map_err(|e| {
+                Error::SendError("KeyKeeperAction::GetHostGARules".to_string(), e.to_string())
+            })?;
+        receiver
+            .await
+            .map_err(|e| Error::RecvError("KeyKeeperAction::GetHostGARules".to_string(), e))
+    }
+
     pub async fn get_notify(&self) -> Result<Arc<Notify>> {
         let (response, receiver) = oneshot::channel();
         self.0
@@ -515,5 +638,117 @@ impl KeyKeeperSharedState {
         let notify = self.get_notify().await?;
         notify.notify_one();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::proxy::authorization_rules;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_key_keeper_shared_state() {
+        let key_keeper = KeyKeeperSharedState::start_new();
+
+        // test Key
+        let mut key = Key::empty();
+        key.key = "test_key".to_string();
+        key.guid = "test_guid".to_string();
+        key.incarnationId = Some(1);
+        key_keeper.update_key(key.clone()).await.unwrap();
+        assert_eq!(
+            key_keeper.get_current_key_value().await.unwrap(),
+            Some("test_key".to_string())
+        );
+        assert_eq!(
+            key_keeper.get_current_key_guid().await.unwrap(),
+            Some("test_guid".to_string())
+        );
+        assert_eq!(
+            key_keeper.get_current_key_incarnation().await.unwrap(),
+            Some(1)
+        );
+        key_keeper.clear_key().await.unwrap();
+        assert_eq!(key_keeper.get_current_key_value().await.unwrap(), None);
+
+        // test Secure Channel State
+        let state = "test_state".to_string();
+        key_keeper
+            .update_current_secure_channel_state(state.clone())
+            .await
+            .unwrap();
+        let current_state = key_keeper.get_current_secure_channel_state().await.unwrap();
+        assert_eq!(state, current_state);
+
+        // test WireServer Rule
+        let rule_id = "test_wireserver_rule_id".to_string();
+        let (updated, old_rule_id) = key_keeper
+            .update_wireserver_rule_id(rule_id.clone())
+            .await
+            .unwrap();
+        assert!(updated);
+        assert_eq!(old_rule_id, "");
+        assert_eq!(key_keeper.get_wireserver_rule_id().await.unwrap(), rule_id);
+        let rules = AuthorizationItem {
+            defaultAccess: "allow".to_string(),
+            mode: "audit".to_string(),
+            id: rule_id.to_string(),
+            rules: None,
+        };
+        key_keeper
+            .set_wireserver_rules(Some(rules.clone()))
+            .await
+            .unwrap();
+        let retrieved_rules = key_keeper.get_wireserver_rules().await.unwrap();
+        assert!(retrieved_rules.is_some());
+        let retrieved_rules = retrieved_rules.unwrap();
+        assert_eq!(rules.id, retrieved_rules.id);
+        assert_eq!(true, retrieved_rules.defaultAllowed);
+        assert_eq!(
+            authorization_rules::AuthorizationMode::Audit,
+            retrieved_rules.mode
+        );
+        assert_eq!(0, retrieved_rules.privilegeAssignments.len());
+        assert_eq!(0, retrieved_rules.privileges.len());
+        assert_eq!(0, retrieved_rules.identities.len());
+
+        // test IMDS Rule
+        let rule_id = "test_imds_rule_id".to_string();
+        let (updated, old_rule_id) = key_keeper
+            .update_imds_rule_id(rule_id.clone())
+            .await
+            .unwrap();
+        assert!(updated);
+        assert_eq!(old_rule_id, "");
+        assert_eq!(key_keeper.get_imds_rule_id().await.unwrap(), rule_id);
+        let rules = AuthorizationItem {
+            defaultAccess: "deny".to_string(),
+            mode: "enforce".to_string(),
+            id: rule_id.to_string(),
+            rules: None,
+        };
+        key_keeper
+            .set_imds_rules(Some(rules.clone()))
+            .await
+            .unwrap();
+        let retrieved_rules = key_keeper.get_imds_rules().await.unwrap();
+        assert!(retrieved_rules.is_some());
+        let retrieved_rules = retrieved_rules.unwrap();
+        assert_eq!(rules.id, retrieved_rules.id);
+        assert_eq!(false, retrieved_rules.defaultAllowed);
+        assert_eq!(
+            authorization_rules::AuthorizationMode::Enforce,
+            retrieved_rules.mode
+        );
+
+        // test HostGA Rule
+        let rule_id = "test_hostga_rule_id".to_string();
+        let (updated, old_rule_id) = key_keeper
+            .update_hostga_rule_id(rule_id.clone())
+            .await
+            .unwrap();
+        assert!(updated);
+        assert_eq!(old_rule_id, "");
     }
 }

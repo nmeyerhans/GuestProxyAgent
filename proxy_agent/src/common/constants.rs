@@ -7,6 +7,7 @@ pub const GA_PLUGIN_PORT: u16 = 32526u16;
 pub const IMDS_IP: &str = "169.254.169.254";
 pub const IMDS_PORT: u16 = 80u16;
 
+pub const WINDOWS_AZURE: &str = "Windows Azure";
 pub const PROXY_AGENT_SERVICE_NAME: &str = "GuestProxyAgent";
 pub const PROXY_AGENT_IP: &str = "127.0.0.1";
 pub const PROXY_AGENT_PORT: u16 = 3080;
@@ -28,6 +29,8 @@ pub const AUTHORIZATION_HEADER: &str = "x-ms-azure-host-authorization";
 pub const DATE_HEADER: &str = "x-ms-azure-host-date";
 pub const METADATA_HEADER: &str = "Metadata";
 pub const CONNECTION_HEADER: &str = "connection";
+pub const TIME_TICK_HEADER: &str = "x-ms-azure-time_tick";
+pub const NOTIFY_HEADER: &str = "x-ms-azure-notify";
 
 // Default Config Settings
 pub const DEFAULT_MAX_EVENT_FILE_COUNT: usize = 30;

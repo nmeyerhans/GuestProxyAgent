@@ -81,12 +81,12 @@ async fn main() {
         let log_folder = common::get_handler_environment(&exe_path)
             .logFolder
             .to_string();
-        logger::init_logger(log_folder, constants::SERVICE_LOG_FILE).await;
-        common::start_event_logger(constants::SERVICE_LOG_FILE).await;
+        logger::init_logger(log_folder, constants::SERVICE_LOG_FILE);
+        common::start_event_logger().await;
         #[cfg(windows)]
         {
             if let Err(e) = service_dispatcher::start(constants::PLUGIN_NAME, ffi_service_main) {
-                logger::write(format!("Failed to start the service: {}", e));
+                logger::write(format!("Failed to start the service: {e}"));
             }
         }
         #[cfg(not(windows))]
@@ -104,7 +104,7 @@ fn proxy_agent_extension_windows_service_main(args: Vec<OsString>) {
         .expect("You must provide the Tokio runtime handle before this function is called");
     handle.block_on(async {
         if let Err(e) = service_main::windows_main::run_service(args).await {
-            logger::write(format!("Failed to start the service: {}", e));
+            logger::write(format!("Failed to start the service: {e}"));
         }
     });
 }

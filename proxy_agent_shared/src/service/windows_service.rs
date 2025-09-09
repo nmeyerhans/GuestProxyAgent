@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
 use crate::error::Error;
-use crate::logger_manager;
+use crate::logger::logger_manager;
 use crate::result::Result;
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -21,14 +21,13 @@ pub async fn start_service_with_retry(
     duration: std::time::Duration,
 ) -> Result<()> {
     for i in 0..retry_count {
-        logger_manager::write_info(format!("Starting service {} attempt {}", service_name, i));
+        logger_manager::write_info(format!("Starting service '{service_name}' attempt {i}"));
 
         match start_service_once(service_name).await {
             Ok(service) => {
                 if service.current_state == ServiceState::Running {
                     logger_manager::write_info(format!(
-                        "Service {} is at Running state",
-                        service_name
+                        "Service '{service_name}' is at Running state"
                     ));
                     return Ok(());
                 }
@@ -43,19 +42,13 @@ pub async fn start_service_with_retry(
             }
             Err(e) => {
                 logger_manager::write_warn(
-                    format!(
-                        "Extension service {} start failed with error: {}",
-                        service_name, e
-                    )
-                    .to_string(),
+                    format!("Extension service '{service_name}' start failed with error: {e}")
+                        .to_string(),
                 );
                 if (i + 1) == retry_count {
                     logger_manager::write_err(
-                        format!(
-                            "Service {} failed to start after {} attempts",
-                            service_name, i
-                        )
-                        .to_string(),
+                        format!("Service '{service_name}' failed to start after {i} attempts")
+                            .to_string(),
                     );
                     return Err(e);
                 }
@@ -70,10 +63,10 @@ async fn start_service_once(service_name: &str) -> Result<ServiceStatus> {
     // Start service if it already isn't running
     let service = query_service_status(service_name)?;
     if service.current_state == ServiceState::Running {
-        logger_manager::write_info(format!("Service '{}' is already running", service_name));
+        logger_manager::write_info(format!("Service '{service_name}' is already running"));
         Ok(service)
     } else {
-        logger_manager::write_info(format!("Starting service '{}'", service_name));
+        logger_manager::write_info(format!("Starting service '{service_name}'"));
         let service_manager: ServiceManager =
             ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
                 .map_err(|e| Error::WindowsService(e, std::io::Error::last_os_error()))?;
@@ -122,8 +115,7 @@ pub async fn stop_service(service_name: &str) -> Result<ServiceStatus> {
             }
             Err(e) => {
                 logger_manager::write_info(format!(
-                    "Stopped service {} failed, error: {:?}",
-                    service_name, e
+                    "Stopped service {service_name} failed, error: {e:?}"
                 ));
             }
         }
@@ -308,29 +300,11 @@ pub fn set_default_failure_actions(service_name: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::logger_manager;
-    use std::env;
     use std::{path::PathBuf, process::Command};
 
     #[tokio::test]
     async fn test_install_service() {
         const TEST_SERVICE_NAME: &str = "test_nt_service";
-        let mut temp_test_path = env::temp_dir();
-        temp_test_path.push("test_install_service");
-
-        let log_folder: PathBuf = temp_test_path.to_path_buf();
-        let log_key: &str = "test_install_service";
-        let log_name: String = "test_install_service.log".to_string();
-        let log_size: u64 = 20 * 1024 * 1024;
-        let log_count: u16 = 30;
-        logger_manager::init_logger(
-            log_key.to_string(),
-            log_folder,
-            log_name,
-            log_size,
-            log_count,
-        )
-        .await;
 
         // Delete Service if it exists
         _ = super::stop_and_delete_service(TEST_SERVICE_NAME).await;
@@ -408,7 +382,7 @@ mod tests {
             .expect("Failed to execute command");
 
         let output_str = String::from_utf8_lossy(&output.stdout);
-        print!("SC query output: {}", output_str);
+        println!("SC query output: {}", output_str);
 
         // Check if the output contains the desired information indicating the service is running
         assert!(output_str.contains("The specified service does not exist as an installed service"));

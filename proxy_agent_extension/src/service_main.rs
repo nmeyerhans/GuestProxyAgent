@@ -4,7 +4,10 @@ use crate::common;
 use crate::constants;
 use crate::logger;
 use crate::structs::*;
-use proxy_agent_shared::proxy_agent_aggregate_status::GuestProxyAgentAggregateStatus;
+use proxy_agent_shared::logger::LoggerLevel;
+use proxy_agent_shared::proxy_agent_aggregate_status::{
+    self, GuestProxyAgentAggregateStatus, ProxyConnectionSummary,
+};
 use proxy_agent_shared::telemetry::event_logger;
 use proxy_agent_shared::{misc_helpers, telemetry};
 use service_state::ServiceState;
@@ -30,7 +33,7 @@ pub fn run() {
         misc_helpers::get_long_os_version()
     );
     telemetry::event_logger::write_event(
-        telemetry::event_logger::INFO_LEVEL,
+        LoggerLevel::Info,
         message,
         "run",
         "service_main",
@@ -72,7 +75,7 @@ async fn monitor_thread() {
     let handler_environment = common::get_handler_environment(&exe_path);
     let status_folder_path: PathBuf = handler_environment.statusFolder.to_string().into();
     let mut cache_seq_no = String::new();
-    let proxyagent_file_version_in_extension = get_proxy_agent_file_version_in_extension();
+    let mut proxyagent_file_version_in_extension = String::new();
     let mut service_state = ServiceState::default();
     let mut status = StatusObj {
         name: constants::PLUGIN_NAME.to_string(),
@@ -82,7 +85,7 @@ async fn monitor_thread() {
         status: constants::SUCCESS_STATUS.to_string(),
         formattedMessage: FormattedMessage {
             lang: constants::LANG_EN_US.to_string(),
-            message: "Update Proxy Agent command output successfully".to_string(),
+            message: "Started ProxyAgent Extension Monitoring thread.".to_string(),
         },
         substatus: Default::default(),
     };
@@ -91,13 +94,38 @@ async fn monitor_thread() {
     let mut restored_in_error = false;
     let mut proxy_agent_update_reported: Option<telemetry::span::SimpleSpan> = None;
     loop {
-        let current_seq_no = common::get_current_seq_no(&exe_path);
+        let current_seq_no: String = common::get_current_seq_no(&exe_path);
+        if proxyagent_file_version_in_extension.is_empty() {
+            // File version of proxy agent service already downloaded by VM Agent
+            let path = common::get_proxy_agent_exe_path();
+            proxyagent_file_version_in_extension =
+                match misc_helpers::get_proxy_agent_version(&path) {
+                    Ok(version) => version,
+                    Err(e) => {
+                        let error_message = format!(
+                            "Failed to get GuestProxyAgent version from file {} with error: {}",
+                            misc_helpers::path_to_string(&path),
+                            e
+                        );
+                        logger::write(error_message.clone());
+                        status.formattedMessage.message = error_message;
+                        status.code = constants::STATUS_CODE_NOT_OK;
+                        status.status = status_state_obj.update_state(false);
+                        common::report_status(
+                            status_folder_path.to_path_buf(),
+                            &current_seq_no,
+                            &status,
+                        );
+                        tokio::time::sleep(Duration::from_secs(15)).await;
+                        continue;
+                    }
+                };
+        }
         if cache_seq_no != current_seq_no {
             telemetry::event_logger::write_event(
-                telemetry::event_logger::INFO_LEVEL,
+                LoggerLevel::Info,
                 format!(
-                    "Current seq_no: {} does not match cached seq no {}",
-                    current_seq_no, cache_seq_no
+                    "Current seq_no: {current_seq_no} does not match cached seq no {cache_seq_no}"
                 ),
                 "monitor_thread",
                 "service_main",
@@ -121,10 +149,9 @@ async fn monitor_thread() {
             if proxyagent_file_version_in_extension != proxyagent_service_file_version {
                 // Call setup tool to install or update proxy agent service
                 telemetry::event_logger::write_event(
-                    telemetry::event_logger::INFO_LEVEL,
-                    format!("Version mismatch between file versions. ProxyAgentService File Version: {}, ProxyAgent in Extension File Version: {}", 
-                        proxyagent_service_file_version,
-                        proxyagent_file_version_in_extension),
+                    LoggerLevel::Info,
+                    format!("Version mismatch between file versions. ProxyAgentService File Version: {proxyagent_service_file_version}, ProxyAgent in Extension File Version: {proxyagent_file_version_in_extension}"
+                        ),
                     "monitor_thread",
                     "service_main",
                     logger_key,
@@ -201,7 +228,7 @@ fn write_state_event(
 ) {
     if service_state.update_service_state_entry(state_key, state_value, MAX_STATE_COUNT) {
         event_logger::write_event(
-            event_logger::INFO_LEVEL,
+            LoggerLevel::Info,
             message,
             method_name,
             module_name,
@@ -279,26 +306,28 @@ fn backup_proxyagent(setup_tool: &String) {
     match Command::new(setup_tool).arg("backup").output() {
         Ok(output) => {
             let event_level = if output.status.success() {
-                telemetry::event_logger::INFO_LEVEL
+                LoggerLevel::Info
             } else {
-                telemetry::event_logger::WARN_LEVEL
+                LoggerLevel::Warn
             };
+            let message = format!(
+                "Backup Proxy Agent command finished with stdoutput: {}, stderr: {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
             telemetry::event_logger::write_event(
                 event_level,
-                format!(
-                    "Backup Proxy Agent command finished with stdoutput: {}, stderr: {}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
+                message.clone(),
                 "backup_proxyagent",
                 "service_main",
                 &logger::get_logger_key(),
             );
         }
         Err(e) => {
+            let message = format!("Error in running Backup Proxy Agent command: {e}");
             telemetry::event_logger::write_event(
-                telemetry::event_logger::INFO_LEVEL,
-                format!("Error in running Backup Proxy Agent command: {}", e),
+                LoggerLevel::Warn,
+                message.clone(),
                 "backup_proxyagent",
                 "service_main",
                 &logger::get_logger_key(),
@@ -315,7 +344,8 @@ fn report_proxy_agent_aggregate_status(
     service_state: &mut ServiceState,
 ) {
     let aggregate_status_file_path =
-        PathBuf::from(constants::PROXY_AGENT_AGGREGATE_STATUS_FILE.to_string());
+        proxy_agent_aggregate_status::get_proxy_agent_aggregate_status_folder()
+            .join(proxy_agent_aggregate_status::PROXY_AGENT_AGGREGATE_STATUS_FILE_NAME);
 
     let proxy_agent_aggregate_status_top_level: GuestProxyAgentAggregateStatus;
     match misc_helpers::json_read_from_file::<GuestProxyAgentAggregateStatus>(
@@ -341,8 +371,7 @@ fn report_proxy_agent_aggregate_status(
             );
         }
         Err(e) => {
-            let error_message =
-                format!("Error in reading proxy agent aggregate status file: {}", e);
+            let error_message = format!("Error in reading proxy agent aggregate status file: {e}");
             write_state_event(
                 constants::STATE_KEY_READ_PROXY_AGENT_STATUS_FILE,
                 constants::ERROR_STATUS,
@@ -405,7 +434,7 @@ fn extension_substatus(
         proxy_agent_aggregate_status_obj.version.to_string();
     if proxy_agent_aggregate_status_file_version != *proxyagent_file_version_in_extension {
         status.status = status_state_obj.update_state(false);
-        let version_mismatch_message = format!("Proxy agent aggregate status file version {} does not match proxy agent file version in extension {}", proxy_agent_aggregate_status_file_version, proxyagent_file_version_in_extension);
+        let version_mismatch_message = format!("Proxy agent aggregate status file version {proxy_agent_aggregate_status_file_version} does not match proxy agent file version in extension {proxyagent_file_version_in_extension}");
         write_state_event(
             constants::STATE_KEY_FILE_VERSION,
             constants::ERROR_STATUS,
@@ -455,28 +484,30 @@ fn extension_substatus(
                 Ok(proxy_agent_aggregate_status) => proxy_agent_aggregate_status,
                 Err(e) => {
                     let error_message =
-                        format!("Error in serializing proxy agent aggregate status: {}", e);
+                        format!("Error in serializing proxy agent aggregate status: {e}");
                     logger::write(error_message.to_string());
                     error_message
                 }
             };
-        let substatus_proxy_agent_connection_message: String;
+        let mut substatus_proxy_agent_connection_message: String;
         if !proxy_agent_aggregate_status_top_level
             .proxyConnectionSummary
             .is_empty()
         {
-            let proxy_agent_aggregate_connection_status_obj =
-                proxy_agent_aggregate_status_top_level.proxyConnectionSummary;
+            let proxy_agent_aggregate_connection_status_obj = get_top_proxy_connection_summary(
+                proxy_agent_aggregate_status_top_level
+                    .proxyConnectionSummary
+                    .clone(),
+                constants::MAX_CONNECTION_SUMMARY_LEN,
+            );
             match serde_json::to_string(&proxy_agent_aggregate_connection_status_obj) {
-                // TODO: only select Top X connection summary if the connection status is too big
                 Ok(proxy_agent_aggregate_connection_status) => {
                     substatus_proxy_agent_connection_message =
                         proxy_agent_aggregate_connection_status;
                 }
                 Err(e) => {
                     let error_message = format!(
-                        "Error in serializing proxy agent aggregate connection status: {}",
-                        e
+                        "Error in serializing proxy agent aggregate connection status: {e}"
                     );
                     logger::write(error_message.to_string());
                     substatus_proxy_agent_connection_message = error_message;
@@ -487,21 +518,24 @@ fn extension_substatus(
             substatus_proxy_agent_connection_message =
                 "proxy connection summary is empty".to_string();
         }
-        let substatus_failed_auth_message: String;
+        let mut substatus_failed_auth_message: String;
         if !proxy_agent_aggregate_status_top_level
             .failedAuthenticateSummary
             .is_empty()
         {
-            let proxy_agent_aggregate_failed_auth_status_obj =
-                proxy_agent_aggregate_status_top_level.failedAuthenticateSummary;
+            let proxy_agent_aggregate_failed_auth_status_obj = get_top_proxy_connection_summary(
+                proxy_agent_aggregate_status_top_level
+                    .failedAuthenticateSummary
+                    .clone(),
+                constants::MAX_FAILED_AUTH_SUMMARY_LEN,
+            );
             match serde_json::to_string(&proxy_agent_aggregate_failed_auth_status_obj) {
                 Ok(proxy_agent_aggregate_failed_auth_status) => {
                     substatus_failed_auth_message = proxy_agent_aggregate_failed_auth_status;
                 }
                 Err(e) => {
                     let error_message = format!(
-                        "Error in serializing proxy agent aggregate failed auth status: {}",
-                        e
+                        "Error in serializing proxy agent aggregate failed auth status: {e}"
                     );
                     logger::write(error_message.to_string());
                     substatus_failed_auth_message = error_message;
@@ -511,6 +545,12 @@ fn extension_substatus(
             logger::write("proxy failed auth summary is empty".to_string());
             substatus_failed_auth_message = "proxy failed auth summary is empty".to_string();
         }
+
+        trim_proxy_agent_status_file(
+            &mut substatus_failed_auth_message,
+            &mut substatus_proxy_agent_connection_message,
+            constants::MAX_PROXYAGENT_CONNECTION_DATA_SIZE_IN_KB,
+        );
 
         status.substatus = {
             vec![
@@ -557,6 +597,37 @@ fn extension_substatus(
     }
 }
 
+fn trim_proxy_agent_status_file(
+    substatus_failed_auth_message: &mut String,
+    substatus_connection_summary_message: &mut String,
+    max_size_in_kb: usize,
+) {
+    let allowed_bytes = max_size_in_kb * 1024;
+    if substatus_connection_summary_message.len() + substatus_failed_auth_message.len()
+        > allowed_bytes
+    {
+        let connection_message = "Substatus of proxy agent connection message and failed auth message size exceeds max size, dropping connection summary".to_string();
+        logger::write(connection_message.clone());
+        *substatus_connection_summary_message = connection_message;
+        if substatus_failed_auth_message.len() > allowed_bytes {
+            substatus_failed_auth_message.truncate(allowed_bytes);
+        }
+    }
+}
+
+fn get_top_proxy_connection_summary(
+    mut summary: Vec<ProxyConnectionSummary>,
+    max_count: usize,
+) -> Vec<ProxyConnectionSummary> {
+    summary.sort_by(|a, b| a.count.cmp(&b.count));
+    let len = summary.len();
+    if len > max_count {
+        summary = summary.split_off(len - max_count);
+    }
+
+    summary
+}
+
 fn restore_purge_proxyagent(status: &mut StatusObj) -> bool {
     let setup_tool = misc_helpers::path_to_string(&common::setup_tool_exe_path());
     if status.status == *constants::ERROR_STATUS {
@@ -564,9 +635,9 @@ fn restore_purge_proxyagent(status: &mut StatusObj) -> bool {
         match output {
             Ok(output) => {
                 let event_level = if output.status.success() {
-                    telemetry::event_logger::INFO_LEVEL
+                    LoggerLevel::Info
                 } else {
-                    telemetry::event_logger::WARN_LEVEL
+                    LoggerLevel::Warn
                 };
                 telemetry::event_logger::write_event(
                     event_level,
@@ -582,8 +653,8 @@ fn restore_purge_proxyagent(status: &mut StatusObj) -> bool {
             }
             Err(e) => {
                 telemetry::event_logger::write_event(
-                    telemetry::event_logger::INFO_LEVEL,
-                    format!("Error in running Restore Proxy Agent command: {}", e),
+                    LoggerLevel::Info,
+                    format!("Error in running Restore Proxy Agent command: {e}"),
                     "restore_purge_proxyagent",
                     "service_main",
                     &logger::get_logger_key(),
@@ -596,9 +667,9 @@ fn restore_purge_proxyagent(status: &mut StatusObj) -> bool {
         match output {
             Ok(output) => {
                 let event_level = if output.status.success() {
-                    telemetry::event_logger::INFO_LEVEL
+                    LoggerLevel::Info
                 } else {
-                    telemetry::event_logger::WARN_LEVEL
+                    LoggerLevel::Warn
                 };
                 telemetry::event_logger::write_event(
                     event_level,
@@ -614,17 +685,17 @@ fn restore_purge_proxyagent(status: &mut StatusObj) -> bool {
             }
             Err(e) => {
                 telemetry::event_logger::write_event(
-                    telemetry::event_logger::INFO_LEVEL,
-                    format!("Error in running Purge Proxy Agent command: {}", e),
+                    LoggerLevel::Info,
+                    format!("Error in running Purge Proxy Agent command: {e}"),
                     "restore_purge_proxyagent",
                     "service_main",
                     &logger::get_logger_key(),
                 );
             }
         }
-        return true;
+        true
     } else {
-        return false;
+        false
     }
 }
 
@@ -637,26 +708,30 @@ fn report_proxy_agent_service_status(
 ) {
     match output {
         Ok(output) => {
+            let message =
+                "Successfully Executed Setup Tool Install Command for Proxy Agent Version Upgrade"
+                    .to_string();
             logger::write(format!(
-                "Update Proxy Agent command output: {}",
-                String::from_utf8_lossy(&output.stdout)
+                "{} with stdoutput: {}, stderr: {}",
+                message.clone(),
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
             ));
             if output.status.success() {
-                logger::write("Update Proxy Agent command output successfully".to_string());
                 status.configurationAppliedTime = misc_helpers::get_date_time_string();
                 status.code = constants::STATUS_CODE_OK;
                 status.status = status_state_obj.update_state(false);
-                status.formattedMessage.message =
-                    "Update Proxy Agent command output successfully".to_string();
+                status.formattedMessage.message = message;
                 status.substatus = Default::default();
                 common::report_status(status_folder, seq_no, status);
             } else {
+                let err_message = format!(
+                    "Execute Install Command in Proxy Agent Setup Tool Output Status Not Success: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
                 telemetry::event_logger::write_event(
-                    telemetry::event_logger::INFO_LEVEL,
-                    format!(
-                        "Update Proxy Agent command failed with error: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    ),
+                    LoggerLevel::Warn,
+                    err_message.clone(),
                     "report_proxy_agent_service_status",
                     "service_main",
                     &logger::get_logger_key(),
@@ -667,16 +742,18 @@ fn report_proxy_agent_service_status(
                     .code()
                     .unwrap_or(constants::STATUS_CODE_NOT_OK);
                 status.status = status_state_obj.update_state(false);
-                status.formattedMessage.message =
-                    "Update Proxy Agent command failed with error".to_string();
+                status.formattedMessage.message = err_message.clone();
                 status.substatus = Default::default();
                 common::report_status(status_folder, seq_no, status);
             }
         }
         Err(e) => {
+            let err_message = format!(
+                "Failed to execute Install Proxy Agent Command Through Setup Tool with error: {e}"
+            );
             telemetry::event_logger::write_event(
-                telemetry::event_logger::INFO_LEVEL,
-                format!("Error in running Update Proxy Agent command: {}", e),
+                LoggerLevel::Warn,
+                err_message.clone(),
                 "report_proxy_agent_service_status",
                 "service_main",
                 &logger::get_logger_key(),
@@ -685,27 +762,9 @@ fn report_proxy_agent_service_status(
             status.configurationAppliedTime = misc_helpers::get_date_time_string();
             status.code = constants::STATUS_CODE_NOT_OK;
             status.status = status_state_obj.update_state(false);
-            status.formattedMessage.message =
-                format!("Update Proxy Agent command failed with error: {}", e);
+            status.formattedMessage.message = err_message.clone();
             status.substatus = Default::default();
             common::report_status(status_folder, seq_no, status);
-        }
-    }
-}
-
-fn get_proxy_agent_file_version_in_extension() -> String {
-    // File version of proxy agent service already downloaded by VM Agent
-    let path = common::get_proxy_agent_exe_path();
-    match misc_helpers::get_proxy_agent_version(&path) {
-        Ok(version) => version,
-        Err(e) => {
-            logger::write(format!(
-                "Failed to get GuestProxyAgent version from file {} with error: {}",
-                misc_helpers::path_to_string(&path),
-                e
-            ));
-            // return empty string if failed to get version
-            "".to_string()
         }
     }
 }
@@ -714,23 +773,19 @@ fn get_proxy_agent_file_version_in_extension() -> String {
 #[cfg(test)]
 mod tests {
     use crate::constants;
-    use crate::logger;
     use crate::structs::*;
     use proxy_agent_shared::misc_helpers;
     use proxy_agent_shared::proxy_agent_aggregate_status::*;
-    use std::env;
-    use std::fs;
 
+    #[test]
     #[cfg(windows)]
-    use std::io::Write;
-    #[cfg(windows)]
-    use std::path::PathBuf;
-    #[cfg(windows)]
-    use std::process::Command;
+    fn report_proxy_agent_service_status() {
+        use std::env;
+        use std::fs;
+        use std::io::Write;
+        use std::path::PathBuf;
+        use std::process::Command;
 
-    #[tokio::test]
-    #[cfg(windows)]
-    async fn report_proxy_agent_service_status() {
         // Create temp directory for status folder
         let mut temp_test_path = env::temp_dir();
         temp_test_path.push("test_status_file");
@@ -739,8 +794,6 @@ mod tests {
         _ = fs::remove_dir_all(&temp_test_path);
         _ = misc_helpers::try_create_folder(&temp_test_path);
         let status_folder: PathBuf = temp_test_path.join("status");
-        let log_folder: String = temp_test_path.to_str().unwrap().to_string();
-        logger::init_logger(log_folder, constants::SERVICE_LOG_FILE).await;
 
         let mut test_good = temp_test_path.clone();
         test_good.push("test.ps1");
@@ -807,18 +860,8 @@ mod tests {
         _ = fs::remove_dir_all(&temp_test_path);
     }
 
-    #[tokio::test]
-    async fn test_proxyagent_service_success_status() {
-        // Create temp directory for status folder
-        let mut temp_test_path = env::temp_dir();
-        temp_test_path.push("test_status_file");
-
-        //Clean up and ignore the clean up errors
-        _ = fs::remove_dir_all(&temp_test_path);
-        _ = misc_helpers::try_create_folder(&temp_test_path);
-        let log_folder: String = temp_test_path.to_str().unwrap().to_string();
-        logger::init_logger(log_folder, constants::SERVICE_LOG_FILE).await;
-
+    #[test]
+    fn test_proxyagent_service_success_status() {
         let proxy_agent_status_obj = ProxyAgentStatus {
             version: "1.0.0".to_string(),
             status: OverallState::SUCCESS,
@@ -905,24 +948,11 @@ mod tests {
             &mut service_state,
         );
         assert_eq!(status.status, constants::SUCCESS_STATUS.to_string());
-
-        //Clean up and ignore the clean up errors
-        _ = fs::remove_dir_all(&temp_test_path);
     }
 
     #[tokio::test]
     #[cfg(windows)]
     async fn test_report_ebpf_status() {
-        // Create temp directory for status folder
-        let mut temp_test_path = env::temp_dir();
-        temp_test_path.push("test_status_file");
-
-        //Clean up and ignore the clean up errors
-        _ = fs::remove_dir_all(&temp_test_path);
-        _ = misc_helpers::try_create_folder(&temp_test_path);
-        let log_folder: String = temp_test_path.to_str().unwrap().to_string();
-        logger::init_logger(log_folder, constants::SERVICE_LOG_FILE).await;
-
         let mut status = StatusObj {
             name: constants::PLUGIN_NAME.to_string(),
             operation: constants::ENABLE_OPERATION.to_string(),
@@ -983,8 +1013,90 @@ mod tests {
             status.substatus[3].name,
             constants::EBPF_SUBSTATUS_NAME.to_string()
         );
+    }
 
-        //Clean up and ignore the clean up errors
-        _ = fs::remove_dir_all(&temp_test_path);
+    #[tokio::test]
+    async fn get_top_proxy_connection_summary_tests() {
+        let mut summary = Vec::new();
+        let mut proxy_connection_summary_obj = ProxyConnectionSummary {
+            userName: "test".to_string(),
+            ip: "test".to_string(),
+            port: 1,
+            processCmdLine: "test".to_string(),
+            responseStatus: "test".to_string(),
+            count: 1,
+            processFullPath: Some("test".to_string()),
+            userGroups: Some(vec!["test".to_string()]),
+        };
+        summary.push(proxy_connection_summary_obj.clone());
+        proxy_connection_summary_obj.count = 5;
+        summary.push(proxy_connection_summary_obj.clone());
+        proxy_connection_summary_obj.count = 2;
+        summary.push(proxy_connection_summary_obj.clone());
+        proxy_connection_summary_obj.count = 4;
+        summary.push(proxy_connection_summary_obj.clone());
+        proxy_connection_summary_obj.count = 2;
+        summary.push(proxy_connection_summary_obj.clone());
+        let max_len = 3;
+        let result = super::get_top_proxy_connection_summary(summary, max_len);
+        assert_eq!(result.len(), max_len);
+        assert_eq!(result[0].count, 2); // lowest count
+        assert_eq!(result[1].count, 4); // 2nd highest count
+        assert_eq!(result[2].count, 5); // 3rd highest count
+    }
+
+    #[test]
+    fn test_trim_proxy_agent_status_file_cases() {
+        // Case 1: total size is under max_size, should not modify the strings
+        let mut connection_summary = "b".repeat(1024 * 2); // 2 KB
+        let mut failed_auth_summary = "a".repeat(1024); // 1 KB
+        let max_size = 4; // 4 KB
+        let orig_conn = connection_summary.clone();
+        let orig_auth = failed_auth_summary.clone();
+        super::trim_proxy_agent_status_file(
+            &mut failed_auth_summary,
+            &mut connection_summary,
+            max_size,
+        );
+        assert_eq!(connection_summary, orig_conn);
+        assert_eq!(failed_auth_summary, orig_auth);
+
+        // Case 2: total size exceeds max_size, should drop connection summary and keep failed_auth_summary the same
+        let mut connection_summary = "b".repeat(1024 * 3); // 3 KB
+        let mut failed_auth_summary = "a".repeat(1024 * 3); // 3 KB
+        let max_size = 5; // 5 KB
+        super::trim_proxy_agent_status_file(
+            &mut failed_auth_summary,
+            &mut connection_summary,
+            max_size,
+        );
+        assert!(connection_summary.contains("Substatus of proxy agent connection message and failed auth message size exceeds max size"));
+        assert_eq!(failed_auth_summary, "a".repeat(1024 * 3));
+
+        // Case 3: failed_auth_summary alone exceeds max_size, should drop connection summary and trim failed_auth_summary
+        let mut connection_summary = "b".repeat(1024 * 1); // 1 KB
+        let mut failed_auth_summary = "a".repeat(1024 * 10); // 10 KB
+        let max_size = 2; // 2 KB
+        super::trim_proxy_agent_status_file(
+            &mut failed_auth_summary,
+            &mut connection_summary,
+            max_size,
+        );
+        assert!(connection_summary.contains("Substatus of proxy agent connection message and failed auth message size exceeds max size"));
+        assert_eq!(failed_auth_summary, "a".repeat(2048));
+
+        // Case 4: total size exactly equals max_size, should not modify the strings
+        let mut connection_summary = "b".repeat(1024 * 2); // 2 KB
+        let mut failed_auth_summary = "a".repeat(1024 * 2); // 2 KB
+        let max_size = 4; // 4 KB
+        let orig_conn = connection_summary.clone();
+        let orig_auth = failed_auth_summary.clone();
+        super::trim_proxy_agent_status_file(
+            &mut failed_auth_summary,
+            &mut connection_summary,
+            max_size,
+        );
+        assert_eq!(connection_summary, orig_conn);
+        assert_eq!(failed_auth_summary, orig_auth);
     }
 }

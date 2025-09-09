@@ -10,19 +10,16 @@ use std::path::PathBuf;
 pub fn acl_directory(dir_to_acl: PathBuf) -> Result<()> {
     let dir_str = misc_helpers::path_to_string(&dir_to_acl);
     logger::write(format!(
-        "acl_directory: start to set root-only permission to folder {}.",
-        dir_str
+        "acl_directory: start to set root-only permission to folder {dir_str}."
     ));
 
     match chown(&dir_to_acl, Some(Uid::from_raw(0)), Some(Gid::from_raw(0))) {
         Ok(_) => logger::write(format!(
-            "acl_directory: successfully set root-only permission to folder {}.",
-            dir_str
+            "acl_directory: successfully set root-only permission to folder {dir_str}."
         )),
         Err(e) => {
             logger::write(format!(
-                "acl_directory: failed to set root-only permission to folder {}. Error: {:?}",
-                dir_str, e
+                "acl_directory: failed to set root-only permission to folder {dir_str}. Error: {e:?}"
             ));
         }
     }
@@ -31,13 +28,11 @@ pub fn acl_directory(dir_to_acl: PathBuf) -> Result<()> {
     let permissions = fs::Permissions::from_mode(0o700);
     match fs::set_permissions(dir_to_acl, permissions) {
         Ok(_) => logger::write(format!(
-            "acl_directory: successfully set root-only permission to folder {}.",
-            dir_str
+            "acl_directory: successfully set root-only permission to folder {dir_str}."
         )),
         Err(e) => {
             logger::write(format!(
-                "acl_directory: failed to set root-only permission to folder {}. Error: {:?}",
-                dir_str, e
+                "acl_directory: failed to set root-only permission to folder {dir_str}. Error: {e:?}"
             ));
         }
     }
@@ -48,8 +43,6 @@ pub fn acl_directory(dir_to_acl: PathBuf) -> Result<()> {
 #[cfg(feature = "test-with-root")]
 #[cfg(test)]
 mod tests {
-    use crate::common::logger;
-    use proxy_agent_shared::logger_manager;
     use proxy_agent_shared::misc_helpers;
     use std::env;
     use std::fs;
@@ -62,14 +55,6 @@ mod tests {
         temp_test_path.push(logger_key);
         // clean up and ignore the clean up errors
         _ = fs::remove_dir_all(&temp_test_path);
-        logger_manager::init_logger(
-            logger::AGENT_LOGGER_KEY.to_string(), // production code uses 'Agent_Log' to write.
-            temp_test_path.clone(),
-            logger_key.to_string(),
-            10 * 1024 * 1024,
-            20,
-        )
-        .await;
         _ = misc_helpers::try_create_folder(&temp_test_path);
 
         let output = super::acl_directory(temp_test_path.to_path_buf());
