@@ -1,5 +1,5 @@
-azure-guest-proxy-agent (1.0.25-1) UNRELEASED; urgency=medium
+azure-guest-proxy-agent (1.0.36-1~wip0) UNRELEASED; urgency=medium
 
   * Initial release.
 
- -- Noah Meyerhans <noahm@debian.org>  Wed, 15 Jan 2025 18:17:08 +0000
+ -- Noah Meyerhans <noahm@debian.org>  Tue, 09 Sep 2025 14:38:57 -0400
