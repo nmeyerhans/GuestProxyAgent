@@ -7,11 +7,11 @@ Subject: [PATCH 1/5] Remove some Windows dependencies
  proxy_agent_shared/Cargo.toml | 17 -----------------
  2 files changed, 45 deletions(-)
 
-diff --git a/proxy_agent/Cargo.toml b/proxy_agent/Cargo.toml
-index d49ce6f..b38bc4a 100644
---- a/proxy_agent/Cargo.toml
-+++ b/proxy_agent/Cargo.toml
-@@ -50,34 +50,6 @@ features = [
+Index: GuestProxyAgent/proxy_agent/Cargo.toml
+===================================================================
+--- GuestProxyAgent.orig/proxy_agent/Cargo.toml
++++ GuestProxyAgent/proxy_agent/Cargo.toml
+@@ -51,36 +51,6 @@ features = [
    "user"
  ]
  
@@ -26,8 +26,10 @@ index d49ce6f..b38bc4a 100644
 -static_vcruntime = "2.0.0"    # Statically link the VCRuntime when using the MSVC toolchain
 -
 -[target.'cfg(windows)'.dependencies.windows-sys]
--version = "0.42.0"
+-version = "0.52.0"
 -features = [
+-  "Wdk_Foundation",
+-  "Wdk_System_Threading",
 -  "Win32_Foundation",
 -  "Win32_Networking_WinSock",
 -  "Win32_System_IO",
@@ -40,37 +42,59 @@ index d49ce6f..b38bc4a 100644
 -  "Win32_System_ProcessStatus",
 -  "Win32_System_Kernel",
 -  "Win32_Security_Cryptography",
--  "Win32_System_Memory",
+-  "Win32_System_Memory"
 -]
 -
  [features]
  test-with-root = []
  
-diff --git a/proxy_agent_shared/Cargo.toml b/proxy_agent_shared/Cargo.toml
-index cd38069..f586de4 100644
---- a/proxy_agent_shared/Cargo.toml
-+++ b/proxy_agent_shared/Cargo.toml
-@@ -17,22 +17,5 @@ regex = "1.9.5"               # match file name
- thiserror = "1.0.64"
- tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
+Index: GuestProxyAgent/proxy_agent_shared/Cargo.toml
+===================================================================
+--- GuestProxyAgent.orig/proxy_agent_shared/Cargo.toml
++++ GuestProxyAgent/proxy_agent_shared/Cargo.toml
+@@ -20,26 +20,5 @@ log = { version = "0.4.26", features = [
+ ctor = "0.3.6"                # used for test setup and clean up
+ backtrace = "0.3"             # used for get the caller module and function name
  
 -[target.'cfg(windows)'.dependencies]
 -windows-service = "0.7.0"     # windows NT service
 -winreg = "0.11.0"             # windows reg read/write
+-serde-xml-rs = "0.8.1"        # xml Deserializer with xml attribute
+-chrono = "0.4.41"             # parse date time string
 -
 -[target.'cfg(windows)'.dependencies.windows-sys]
--version = "0.42.0"
+-version = "0.52.0"
 -features = [
 -  "Win32_Foundation",
 -  "Win32_Networking_WinSock",
 -  "Win32_System_IO",
 -  "Win32_Security",
+-  "Win32_System_EventLog",
 -  "Win32_System_WindowsProgramming",
 -  "Win32_Security_Authentication_Identity", 
 -  "Win32_System_Diagnostics_Debug",
 -  "Win32_System_SystemInformation",
+-  "Win32_Storage_FileSystem",
 -]
 -
  [target.'cfg(not(windows))'.dependencies]
  os_info = "3.7.0"   # read Linux OS version and arch
 \ No newline at end of file
+Index: GuestProxyAgent/proxy_agent_extension/Cargo.toml
+===================================================================
+--- GuestProxyAgent.orig/proxy_agent_extension/Cargo.toml
++++ GuestProxyAgent/proxy_agent_extension/Cargo.toml
+@@ -15,13 +15,6 @@ thiserror = "1.0.64"
+ tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "macros", "sync"] }
+ ctor = "0.3.6"                # used for test setup and clean up
+ 
+-[target.'cfg(windows)'.dependencies]
+-windows-service = "0.7.0"     # windows NT 
+-
+-[target.'cfg(windows)'.build-dependencies]
+-winres = "0.1.12"             # Rust Windows resource helper to add file version
+-static_vcruntime = "2.0.0"    # Statically link the VCRuntime when using the MSVC toolchain
+-
+ [target.'cfg(not(windows))'.dependencies.nix]
+ version = "0.29.0"
+ features = [

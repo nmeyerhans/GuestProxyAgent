@@ -6,16 +6,16 @@ Subject: don't build setup or extension components
  Cargo.toml | 2 --
  1 file changed, 2 deletions(-)
 
-diff --git a/Cargo.toml b/Cargo.toml
-index 5086c63..3b4a7cc 100644
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -4,8 +4,6 @@ resolver = "2"
- 
+Index: GuestProxyAgent/Cargo.toml
+===================================================================
+--- GuestProxyAgent.orig/Cargo.toml
++++ GuestProxyAgent/Cargo.toml
+@@ -5,8 +5,6 @@ resolver = "2"
  members = [
+     "proxy_agent_shared",
      "proxy_agent",
 -    "proxy_agent_extension",
 -    "proxy_agent_setup",
-     "proxy_agent_shared",
  ]
  
+ exclude = [
